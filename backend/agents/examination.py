@@ -8,6 +8,7 @@ from typing import List, Dict, Any
 
 from agents.base_agent import BaseAgent
 from agent_integrations import examine_findings_with_claude
+from utils.notifications import send_notification
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +72,15 @@ class ExaminationAgent(BaseAgent):
             if finding_id in analysis_result:
                 result = analysis_result[finding_id]
 
+                import json
+                trade_action_json = None
+                if result.get("trade_action"):
+                    trade_action_json = json.dumps(result.get("trade_action"))
+
                 cursor.execute('''
                     INSERT INTO examinations
-                    (finding_id, claude_analysis, gameplan, priority, requires_approval, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (finding_id, claude_analysis, gameplan, priority, requires_approval, status, trade_action, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     finding_id,
                     result.get("analysis", ""),
@@ -82,6 +88,7 @@ class ExaminationAgent(BaseAgent):
                     result.get("priority", "medium"),
                     1 if result.get("needs_approval", False) else 0,
                     'pending_action',
+                    trade_action_json,
                     now,
                     now
                 ))
@@ -91,6 +98,17 @@ class ExaminationAgent(BaseAgent):
                     'UPDATE research_findings SET status = ?, updated_at = ? WHERE id = ?',
                     ('examined', now, finding_id)
                 )
+
+                # Send notification for approval-required items
+                if result.get("needs_approval"):
+                    agent = finding.get("agent_name", "unknown")
+                    priority = result.get("priority", "medium").upper()
+                    gameplan = result.get("gameplan", "")[:180]
+                    send_notification(
+                        f"[{agent.upper()} / {priority}] {gameplan}",
+                        title="Action Required — Mission Control",
+                        tags="rotating_light"
+                    )
 
                 logger.info(f"Created examination for finding {finding_id}")
             else:

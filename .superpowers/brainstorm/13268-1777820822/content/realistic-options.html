@@ -1,0 +1,155 @@
+<h2>More Realistic Agent Styles</h2>
+<p class="subtitle">Different approaches to more realistic pixel characters. Which direction?</p>
+
+<div class="options">
+  <div class="option" data-choice="proportional" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Proportional Body</h3>
+      <p>Better human proportions: smaller head relative to body, longer limbs, standing pose. More like actual people.</p>
+      <div style="margin-top: 12px; padding: 16px; background: #1a1a2e; border-radius: 4px; text-align: center;">
+        <canvas id="canvasProportional" width="100" height="120" style="image-rendering: pixelated; border: 1px solid #444;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="detailed-realistic" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Detailed & Shaded</h3>
+      <p>More detail with shading and highlights. Clothes, better faces. Feels more like a character with personality.</p>
+      <div style="margin-top: 12px; padding: 16px; background: #1a1a2e; border-radius: 4px; text-align: center;">
+        <canvas id="canvasDetailed" width="100" height="120" style="image-rendering: pixelated; border: 1px solid #444;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="isometric" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Isometric 3D</h3>
+      <p>Slight 3D perspective (isometric view). More depth, modern feel. Like indie game characters.</p>
+      <div style="margin-top: 12px; padding: 16px; background: #1a1a2e; border-radius: 4px; text-align: center;">
+        <canvas id="canvasIsometric" width="100" height="120" style="image-rendering: pixelated; border: 1px solid #444;"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function drawBlock(ctx, x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+// A: Proportional Body (Sports Agent - Blue)
+function drawProportional(ctx) {
+  ctx.scale(4, 4);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, 25, 30);
+
+  // Head (smaller proportion)
+  drawBlock(ctx, 9, 2, 7, 7, '#fdbf69');
+  drawBlock(ctx, 10, 3, 1, 1, '#000'); // left eye
+  drawBlock(ctx, 14, 3, 1, 1, '#000'); // right eye
+  drawBlock(ctx, 11, 5, 3, 1, '#ef4444'); // mouth
+
+  // Neck
+  drawBlock(ctx, 11, 9, 3, 1, '#fdbf69');
+
+  // Body (longer, more realistic)
+  drawBlock(ctx, 10, 10, 5, 8, '#3b82f6');
+
+  // Arms (longer)
+  drawBlock(ctx, 7, 11, 2, 7, '#fdbf69');
+  drawBlock(ctx, 18, 11, 2, 7, '#fdbf69');
+
+  // Hands
+  drawBlock(ctx, 6, 18, 1, 1, '#fdbf69');
+  drawBlock(ctx, 20, 18, 1, 1, '#fdbf69');
+
+  // Legs (longer, realistic)
+  drawBlock(ctx, 10, 18, 2, 10, '#1e40af');
+  drawBlock(ctx, 13, 18, 2, 10, '#1e40af');
+
+  // Shoes
+  drawBlock(ctx, 9, 28, 3, 1, '#000');
+  drawBlock(ctx, 13, 28, 3, 1, '#000');
+
+  // Football in right hand
+  drawBlock(ctx, 19, 13, 4, 2, '#92400e');
+}
+
+// B: Detailed & Shaded (Finance Agent - Green)
+function drawDetailed(ctx) {
+  ctx.scale(4, 4);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, 25, 30);
+
+  // Head with shading
+  drawBlock(ctx, 8, 2, 9, 8, '#fdbf69');
+  drawBlock(ctx, 9, 3, 7, 6, '#f5a623'); // shading
+
+  // Eyes (more detailed)
+  drawBlock(ctx, 10, 4, 2, 2, '#ffffff'); // white
+  drawBlock(ctx, 11, 4, 1, 2, '#000');
+  drawBlock(ctx, 14, 4, 2, 2, '#ffffff');
+  drawBlock(ctx, 15, 4, 1, 2, '#000');
+
+  // Mouth
+  drawBlock(ctx, 11, 7, 3, 1, '#000');
+
+  // Shirt (dark green)
+  drawBlock(ctx, 9, 10, 7, 7, '#10b981');
+  drawBlock(ctx, 10, 11, 5, 5, '#059669'); // shading
+
+  // Arms
+  drawBlock(ctx, 6, 12, 2, 8, '#fdbf69');
+  drawBlock(ctx, 17, 12, 2, 8, '#fdbf69');
+
+  // Legs
+  drawBlock(ctx, 10, 17, 2, 10, '#1e3a1f'); // dark
+  drawBlock(ctx, 13, 17, 2, 10, '#1e3a1f');
+
+  // Money bag held above
+  drawBlock(ctx, 18, 6, 4, 5, '#10b981');
+  drawBlock(ctx, 19, 7, 2, 2, '#fbbf24');
+}
+
+// C: Isometric 3D (Creative Agent - Purple)
+function drawIsometric(ctx) {
+  ctx.scale(4, 4);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, 25, 30);
+
+  // Head (isometric, slight tilt)
+  drawBlock(ctx, 10, 1, 5, 6, '#fdbf69');
+  drawBlock(ctx, 11, 3, 1, 1, '#000');
+  drawBlock(ctx, 13, 3, 1, 1, '#000');
+  drawBlock(ctx, 12, 5, 1, 1, '#000');
+
+  // Shadow/depth on head
+  drawBlock(ctx, 15, 3, 2, 3, '#e5b857');
+
+  // Body (isometric trapezoid feel)
+  drawBlock(ctx, 9, 7, 7, 8, '#a855f7');
+  drawBlock(ctx, 10, 8, 5, 6, '#9333ea'); // darker side
+
+  // Arms (isometric angle)
+  drawBlock(ctx, 5, 10, 3, 6, '#fdbf69');
+  drawBlock(ctx, 17, 10, 3, 6, '#fdbf69');
+
+  // Legs (isometric)
+  drawBlock(ctx, 10, 15, 2, 12, '#7c3aed');
+  drawBlock(ctx, 13, 15, 2, 12, '#6d28d9'); // darker
+
+  // Paintbrush (isometric angle)
+  drawBlock(ctx, 19, 6, 1, 7, '#8b5a2b');
+  drawBlock(ctx, 18, 5, 3, 2, '#ec4899');
+}
+
+// Draw examples
+drawProportional(document.getElementById('canvasProportional').getContext('2d'));
+drawDetailed(document.getElementById('canvasDetailed').getContext('2d'));
+drawIsometric(document.getElementById('canvasIsometric').getContext('2d'));
+</script>

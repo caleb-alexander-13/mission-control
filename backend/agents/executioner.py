@@ -8,6 +8,7 @@ from typing import List, Dict, Any, Optional
 
 from agents.base_agent import BaseAgent
 from agent_integrations import send_sms_alert, call_gm_seat_api
+from utils.notifications import send_notification
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +51,128 @@ class ExecutionerAgent(BaseAgent):
             else:
                 self._execute_autonomous_action(exam)
 
-    def _execute_autonomous_action(self, exam: Dict[str, Any]) -> None:
-        """Execute an autonomous action (update War Room)."""
+    def _execute_paper_trade(self, exam: Dict[str, Any]) -> bool:
+        """Execute a paper trade for finance trade signals."""
+        trade_action_raw = exam.get("trade_action")
+        if not trade_action_raw:
+            return False
+
+        # Parse trade_action from JSON string
         try:
-            # For MVP, only autonomous action is updating War Room
+            if isinstance(trade_action_raw, str):
+                import json
+                trade_action = json.loads(trade_action_raw)
+            else:
+                trade_action = trade_action_raw
+        except (json.JSONDecodeError, TypeError):
+            return False
+
+        ticker = trade_action.get("ticker")
+        direction = trade_action.get("direction")
+        confidence = trade_action.get("confidence", 5)
+
+        if not ticker or not direction:
+            return False
+
+        # Fetch current price
+        try:
+            from research.data_sources import YahooFinanceClient
+        except ImportError:
+            from agents.research.data_sources import YahooFinanceClient
+
+        price = YahooFinanceClient.get_stock_price(ticker)
+        if not price:
+            logger.warning(f"Could not fetch price for {ticker}")
+            return False
+
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            cursor = conn.cursor()
+
+            # Get current cash
+            cursor.execute('SELECT balance FROM paper_cash WHERE id=1')
+            row = cursor.fetchone()
+            cash = row[0] if row else 0
+
+            # Calculate position size: 2% + (confidence/10 * 6%)
+            pct = 0.02 + (confidence / 10) * 0.06
+            spend = cash * pct
+            shares = round(spend / price, 4)
+
+            if direction == "buy":
+                if spend > cash:
+                    conn.close()
+                    return False
+
+                # Deduct cash
+                cursor.execute('UPDATE paper_cash SET balance=balance-?, updated_at=? WHERE id=1',
+                               (spend, int(time.time() * 1000)))
+
+                # Upsert portfolio
+                cursor.execute('''INSERT OR IGNORE INTO paper_portfolio (ticker, shares, avg_cost, updated_at)
+                                  VALUES (?,0,0,?)''', (ticker, int(time.time() * 1000)))
+
+                # Update with weighted average cost
+                cursor.execute('''UPDATE paper_portfolio
+                                  SET shares=shares+?, avg_cost=((avg_cost*shares+?*?)/(shares+?)), updated_at=?
+                                  WHERE ticker=?''',
+                               (shares, price, shares, shares, int(time.time() * 1000), ticker))
+
+                cash_delta = -spend
+            else:  # sell
+                cursor.execute('SELECT shares FROM paper_portfolio WHERE ticker=?', (ticker,))
+                pos = cursor.fetchone()
+                sell_shares = min(shares, pos[0] if pos else 0)
+
+                if sell_shares <= 0:
+                    conn.close()
+                    return False
+
+                proceeds = sell_shares * price
+                cursor.execute('UPDATE paper_cash SET balance=balance+?, updated_at=? WHERE id=1',
+                               (proceeds, int(time.time() * 1000)))
+                cursor.execute('UPDATE paper_portfolio SET shares=shares-?, updated_at=? WHERE ticker=?',
+                               (sell_shares, int(time.time() * 1000), ticker))
+                cash_delta = proceeds
+
+            # Log the trade
+            cursor.execute('''INSERT INTO paper_trades (ticker, action, shares, price, cash_impact, reason, finding_id)
+                              VALUES (?,?,?,?,?,?,?)''',
+                           (ticker, direction, shares if direction == "buy" else sell_shares, price, cash_delta,
+                            exam.get("gameplan", "")[:200], exam.get("finding_id")))
+
+            conn.commit()
+            conn.close()
+
+            # Send notification
+            send_notification(
+                f"Finance: {direction.upper()} {shares:.2f} {ticker} @ ${price:.2f}",
+                title="Paper Trade Executed",
+                tags="chart_with_upwards_trend"
+            )
+
+            logger.info(f"Executed paper trade: {direction} {shares} {ticker} @ ${price}")
+            return True
+        except Exception as e:
+            logger.error(f"Paper trade execution failed: {e}", exc_info=True)
+            return False
+
+    def _execute_autonomous_action(self, exam: Dict[str, Any]) -> None:
+        """Execute an autonomous action (paper trade or War Room update)."""
+        try:
+            # Try paper trade first if trade_action exists
+            if self._execute_paper_trade(exam):
+                self._log_action(
+                    exam["id"],
+                    "autonomous",
+                    "Paper Trade",
+                    "success",
+                    "Trade executed"
+                )
+                self._update_examination_status(exam["id"], "executed")
+                return
+
+            # Otherwise try War Room update
             finding = self._get_finding(exam["finding_id"])
 
             if "war room" in exam["gameplan"].lower() or "update war room" in exam["gameplan"].lower():
@@ -148,7 +267,7 @@ class ExecutionerAgent(BaseAgent):
 
         cursor.execute('''
             SELECT id, finding_id, claude_analysis, gameplan, priority,
-                   requires_approval, status, created_at
+                   requires_approval, status, trade_action, created_at
             FROM examinations
             WHERE status = 'pending_action'
             ORDER BY priority DESC, created_at ASC

@@ -114,6 +114,7 @@ def init_db():
             priority          TEXT,
             requires_approval INTEGER DEFAULT 0,
             status            TEXT DEFAULT 'pending_action',
+            trade_action      TEXT,
             created_at        INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
             updated_at        INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
 
@@ -139,6 +140,58 @@ def init_db():
     ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_actions_status ON actions(action_type)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_actions_examination ON actions(examination_id)')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cost_alerts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            threshold_pct   INTEGER NOT NULL,
+            budget          REAL NOT NULL,
+            cost_at_trigger REAL NOT NULL,
+            alert_date      TEXT NOT NULL,
+            sent_via        TEXT,
+            created_at      INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_cost_alerts_date ON cost_alerts(alert_date)')
+
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_examinations_trade_action ON examinations(trade_action) WHERE trade_action IS NOT NULL')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_token_usage_model ON token_usage(model)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage(created_at DESC)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_paper_trades_ticker ON paper_trades(ticker)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_paper_trades_created ON paper_trades(created_at DESC)')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS paper_portfolio (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker      TEXT NOT NULL UNIQUE,
+            shares      REAL NOT NULL DEFAULT 0,
+            avg_cost    REAL NOT NULL DEFAULT 0,
+            updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS paper_trades (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticker          TEXT NOT NULL,
+            action          TEXT NOT NULL,
+            shares          REAL NOT NULL,
+            price           REAL NOT NULL,
+            cash_impact     REAL NOT NULL,
+            reason          TEXT,
+            finding_id      INTEGER,
+            created_at      INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS paper_cash (
+            id          INTEGER PRIMARY KEY,
+            balance     REAL NOT NULL DEFAULT 5000.0,
+            updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+        )
+    ''')
+    cursor.execute('INSERT OR IGNORE INTO paper_cash (id, balance) VALUES (1, 5000.0)')
 
     conn.commit()
     conn.close()

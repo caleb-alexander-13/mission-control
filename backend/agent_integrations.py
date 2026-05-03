@@ -3,6 +3,9 @@ import os
 import json
 import logging
 import requests
+import sqlite3
+import time
+from pathlib import Path
 from typing import Dict, Any
 from anthropic import Anthropic
 
@@ -10,6 +13,31 @@ logger = logging.getLogger(__name__)
 
 # Initialize Anthropic client
 client = Anthropic()
+
+DB_PATH = Path.home() / 'Desktop' / 'mission-control' / 'backend' / 'mission_control.db'
+
+def _log_token_usage(model: str, input_tokens: int, output_tokens: int, cache_read_tokens: int = 0, cache_creation_tokens: int = 0) -> None:
+    """Log token usage to database for cost tracking."""
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO token_usage
+            (session_id, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            'mission-control',
+            model,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+            int(time.time() * 1000)
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.debug(f"Failed to log token usage: {e}")
 
 def score_finding_with_claude(finding_text: str, agent_name: str) -> int:
     """
@@ -34,6 +62,15 @@ Format: "8 - High impact" """
             messages=[
                 {"role": "user", "content": prompt}
             ]
+        )
+
+        # Log token usage
+        _log_token_usage(
+            model="claude-haiku-4-5-20251001",
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            cache_read_tokens=getattr(response.usage, 'cache_read_input_tokens', 0),
+            cache_creation_tokens=getattr(response.usage, 'cache_creation_input_tokens', 0)
         )
 
         # Parse response - extract first number
@@ -116,6 +153,15 @@ Output format (replace finding_id with the actual ID):
                 text = text[start:end]
 
         result = json.loads(text)
+
+        # Log token usage
+        _log_token_usage(
+            model="claude-opus-4-7",
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            cache_read_tokens=getattr(response.usage, 'cache_read_input_tokens', 0),
+            cache_creation_tokens=getattr(response.usage, 'cache_creation_input_tokens', 0)
+        )
 
         # Convert string keys to integers (Claude returns JSON with string keys)
         result = {int(k): v for k, v in result.items()}

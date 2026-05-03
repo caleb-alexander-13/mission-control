@@ -3,6 +3,7 @@
 import logging
 import time
 import os
+import re
 import feedparser
 import requests
 from typing import List, Dict, Any
@@ -11,6 +12,12 @@ from agents.base_agent import BaseAgent
 from agent_integrations import score_finding_with_claude
 
 logger = logging.getLogger(__name__)
+
+KNOWN_TICKERS = {
+    'AAPL','MSFT','GOOGL','AMZN','TSLA','NVDA','META','JPM','BAC','WMT',
+    'NFLX','AMD','INTC','DIS','PYPL','UBER','SNAP','SPOT','CRM','GS','MS'
+}
+TICKER_RE = re.compile(r'\b([A-Z]{2,5})\b')
 
 
 class FinanceAgent(BaseAgent):
@@ -97,11 +104,22 @@ class FinanceAgent(BaseAgent):
         logger.info(f"Fetched {len(findings)} articles from MarketWatch RSS")
         return findings
 
+    def _extract_ticker(self, text: str) -> str | None:
+        """Extract known ticker symbol from text."""
+        for m in TICKER_RE.findall(text):
+            if m in KNOWN_TICKERS:
+                return m
+        return None
+
     def _process_finding(self, finding: Dict[str, Any]) -> None:
         """Score and store a finding."""
         try:
             score = score_finding_with_claude(finding["text"], "finance")
             category = self._categorize(finding["text"])
+            ticker = self._extract_ticker(finding["text"])
+
+            if ticker and score >= 6:
+                category = f"trade_signal:{ticker}"
 
             self._insert_research_finding(
                 finding_text=finding["text"][:500],

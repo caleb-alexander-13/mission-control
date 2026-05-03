@@ -39,3 +39,33 @@ export function getActionFlash(timeMs, duration = 500) {
   // Flash fades out
   return 1 - (timeMs / duration)
 }
+
+export const SPARKLE_DURATION = 900
+
+export function getSparkleParticles(cx, cy, completionAge) {
+  if (completionAge < 0 || completionAge > SPARKLE_DURATION) return []
+  const t = completionAge / SPARKLE_DURATION
+  const alpha = 1 - t
+  return [0,1,2,3,4,5,6,7].map(i => {
+    const angle = (i / 8) * Math.PI * 2 + t * 0.8
+    const dist = 14 + t * 28
+    return {
+      x: cx + Math.cos(angle) * dist,
+      y: cy + Math.sin(angle) * dist,
+      alpha: alpha * (0.6 + 0.4 * Math.sin(i + t * 10)),
+      r: 2 - t * 1.5,
+    }
+  })
+}
+
+export function getWorkingGlowRadius(animTime) {
+  return 6 + Math.sin(animTime / 600) * 6
+}
+
+export function getStuckWarningAlpha(animTime) {
+  return 0.5 + 0.5 * Math.sin(animTime / 250)
+}
+
+export function getStuckBorderAlpha(animTime) {
+  return Math.max(0, Math.sin(animTime / 330))
+}

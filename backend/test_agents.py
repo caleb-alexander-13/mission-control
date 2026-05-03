@@ -121,11 +121,21 @@ def test_executioner_agent():
 
     # Get phone number
     phone = os.getenv("USER_PHONE_NUMBER", "")
+    print(f"→ User phone: {phone if phone else '(not configured)'}")
+
     exec_agent = ExecutionerAgent(user_phone_number=phone)
 
-    # Get pending examinations count
+    # Get pending examinations
     conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
+    cursor.execute('''
+        SELECT id, finding_id, requires_approval, gameplan, priority
+        FROM examinations
+        WHERE status = 'pending_action'
+        LIMIT 5
+    ''')
+    exams = cursor.fetchall()
     cursor.execute('SELECT COUNT(*) FROM examinations WHERE status = ?',
                    ('pending_action',))
     pending_count = cursor.fetchone()[0]
@@ -134,6 +144,11 @@ def test_executioner_agent():
     print(f"\n→ Pending examinations: {pending_count}")
 
     if pending_count > 0:
+        print(f"→ Sample examinations:")
+        for exam in exams[:3]:
+            approval = "needs approval" if exam['requires_approval'] else "autonomous"
+            print(f"  [{exam['id']}] {approval}: {exam['gameplan'][:60]}")
+
         print("→ Running executioner agent...")
         try:
             exec_agent._execute_pending_actions()

@@ -1,0 +1,125 @@
+<h2>Pixel Agent Characters</h2>
+<p class="subtitle">Which style feels right? Each agent is a person holding their domain object.</p>
+
+<div class="options">
+  <div class="option" data-choice="simple" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Simple Blocky (8-bit)</h3>
+      <p>Basic rectangular body, stick arms, holding object prominently. Very retro, clean.</p>
+      <div style="margin-top: 12px; padding: 16px; background: #1a1a2e; border-radius: 4px; text-align: center;">
+        <canvas id="canvasSimple" width="120" height="100" style="image-rendering: pixelated; border: 1px solid #444;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="detailed" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Detailed Pixel (16-bit)</h3>
+      <p>More curves, defined limbs, head with simple face. Less retro, more character.</p>
+      <div style="margin-top: 12px; padding: 16px; background: #1a1a2e; border-radius: 4px; text-align: center;">
+        <canvas id="canvasDetailed" width="120" height="100" style="image-rendering: pixelated; border: 1px solid #444;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="mini" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Mini Cute</h3>
+      <p>Tiny characters with round heads. Cute and modern, works well in tight spaces.</p>
+      <div style="margin-top: 12px; padding: 16px; background: #1a1a2e; border-radius: 4px; text-align: center;">
+        <canvas id="canvasMini" width="120" height="100" style="image-rendering: pixelated; border: 1px solid #444;"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px; padding: 12px; background: #2d3748; border-left: 2px solid #4ade80;">
+  <h4>Objects each agent holds:</h4>
+  <ul style="margin: 0; padding-left: 20px;">
+    <li><strong>Sports:</strong> Football</li>
+    <li><strong>Finance:</strong> Money bag or dollar sign</li>
+    <li><strong>Creative:</strong> Paintbrush</li>
+    <li><strong>Tech:</strong> Gear/wrench</li>
+  </ul>
+</div>
+
+<script>
+function drawPixel(ctx, x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, 1, 1);
+}
+
+function drawBlock(ctx, x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+// Simple Blocky Style
+const ctxSimple = document.getElementById('canvasSimple').getContext('2d');
+ctxSimple.scale(4, 4); // 4x zoom for visibility
+ctxSimple.fillStyle = '#1a1a2e';
+ctxSimple.fillRect(0, 0, 30, 25);
+
+// Draw simple blocky figure with football
+// Head
+drawBlock(ctxSimple, 11, 2, 8, 6, '#fdbf69'); // head
+// Body
+drawBlock(ctxSimple, 10, 8, 10, 6, '#3b82f6'); // blue body
+// Arms
+drawBlock(ctxSimple, 7, 9, 3, 4, '#fdbf69'); // left arm
+drawBlock(ctxSimple, 20, 9, 3, 4, '#fdbf69'); // right arm
+// Legs
+drawBlock(ctxSimple, 11, 14, 3, 6, '#1e40af'); // left leg
+drawBlock(ctxSimple, 16, 14, 3, 6, '#1e40af'); // right leg
+// Football in right hand
+drawBlock(ctxSimple, 22, 7, 4, 3, '#92400e'); // football
+drawBlock(ctxSimple, 23, 6, 2, 1, '#ffffff'); // football stripe
+
+// Detailed Pixel Style
+const ctxDetailed = document.getElementById('canvasDetailed').getContext('2d');
+ctxDetailed.scale(4, 4);
+ctxDetailed.fillStyle = '#1a1a2e';
+ctxDetailed.fillRect(0, 0, 30, 25);
+
+// Head with face
+drawBlock(ctxDetailed, 10, 1, 10, 8, '#fdbf69'); // head
+drawBlock(ctxDetailed, 12, 3, 2, 2, '#000'); // left eye
+drawBlock(ctxDetailed, 16, 3, 2, 2, '#000'); // right eye
+drawBlock(ctxDetailed, 14, 5, 2, 1, '#000'); // mouth
+// Body
+drawBlock(ctxDetailed, 9, 9, 12, 7, '#10b981'); // green body
+// Arms
+drawBlock(ctxDetailed, 5, 10, 4, 5, '#fdbf69'); // left arm
+drawBlock(ctxDetailed, 21, 10, 4, 5, '#fdbf69'); // right arm
+// Legs
+drawBlock(ctxDetailed, 11, 16, 4, 7, '#1e40af'); // left leg
+drawBlock(ctxDetailed, 15, 16, 4, 7, '#1e40af'); // right leg
+// Money bag in right hand
+drawBlock(ctxDetailed, 24, 9, 3, 4, '#10b981'); // bag
+drawBlock(ctxDetailed, 25, 10, 1, 2, '#fbbf24'); // $ symbol
+
+// Mini Cute Style
+const ctxMini = document.getElementById('canvasMini').getContext('2d');
+ctxMini.scale(4, 4);
+ctxMini.fillStyle = '#1a1a2e';
+ctxMini.fillRect(0, 0, 30, 25);
+
+// Tiny round head
+drawBlock(ctxMini, 12, 2, 6, 6, '#fdbf69'); // head
+drawBlock(ctxMini, 13, 3, 1, 1, '#000'); // eye
+drawBlock(ctxMini, 16, 3, 1, 1, '#000'); // eye
+// Small body
+drawBlock(ctxMini, 11, 8, 8, 5, '#f97316'); // orange body
+// Tiny arms
+drawBlock(ctxMini, 8, 9, 2, 3, '#fdbf69'); // left
+drawBlock(ctxMini, 20, 9, 2, 3, '#fdbf69'); // right
+// Tiny legs
+drawBlock(ctxMini, 12, 13, 2, 5, '#1e40af'); // left
+drawBlock(ctxMini, 16, 13, 2, 5, '#1e40af'); // right
+// Paintbrush held up
+drawBlock(ctxMini, 22, 5, 1, 5, '#8b5a2b'); // brush handle
+drawBlock(ctxMini, 21, 4, 3, 2, '#a855f7'); // brush bristles
+</script>

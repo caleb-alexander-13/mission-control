@@ -1,0 +1,167 @@
+<h2>Mini Cute Agents — All Four</h2>
+<p class="subtitle">Here are all 4 R&D agents in the mini cute style, each holding their domain object.</p>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0;">
+  <div style="padding: 16px; background: #2d3748; border-radius: 8px; text-align: center;">
+    <h3 style="margin-top: 0; color: #3b82f6;">Sports Agent</h3>
+    <canvas id="canvasSports" width="120" height="100" style="image-rendering: pixelated; border: 2px solid #3b82f6; border-radius: 4px; display: block; margin: 12px auto;"></canvas>
+    <p style="font-size: 0.9em; color: #cbd5e1;">Holds: Football</p>
+  </div>
+
+  <div style="padding: 16px; background: #2d3748; border-radius: 8px; text-align: center;">
+    <h3 style="margin-top: 0; color: #10b981;">Finance Agent</h3>
+    <canvas id="canvasFinance" width="120" height="100" style="image-rendering: pixelated; border: 2px solid #10b981; border-radius: 4px; display: block; margin: 12px auto;"></canvas>
+    <p style="font-size: 0.9em; color: #cbd5e1;">Holds: Money Bag</p>
+  </div>
+
+  <div style="padding: 16px; background: #2d3748; border-radius: 8px; text-align: center;">
+    <h3 style="margin-top: 0; color: #a855f7;">Creative Agent</h3>
+    <canvas id="canvasCreative" width="120" height="100" style="image-rendering: pixelated; border: 2px solid #a855f7; border-radius: 4px; display: block; margin: 12px auto;"></canvas>
+    <p style="font-size: 0.9em; color: #cbd5e1;">Holds: Paintbrush</p>
+  </div>
+
+  <div style="padding: 16px; background: #2d3748; border-radius: 8px; text-align: center;">
+    <h3 style="margin-top: 0; color: #f97316;">Tech Agent</h3>
+    <canvas id="canvasTech" width="120" height="100" style="image-rendering: pixelated; border: 2px solid #f97316; border-radius: 4px; display: block; margin: 12px auto;"></canvas>
+    <p style="font-size: 0.9em; color: #cbd5e1;">Holds: Gear/Wrench</p>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px; padding: 12px; background: #2d3748; border-left: 2px solid #4ade80;">
+  <p>Each agent is a <strong>12x12px mini character</strong> with:</p>
+  <ul style="margin: 8px 0; padding-left: 20px;">
+    <li>Round head with simple face (eyes + mouth)</li>
+    <li>Color-coded body matching their domain</li>
+    <li>Tiny arms and legs</li>
+    <li>Object held above/beside them</li>
+  </ul>
+</div>
+
+<script>
+function drawBlock(ctx, x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+// Sports Agent (Blue) - with Football
+function drawSportsAgent(ctx) {
+  ctx.scale(4, 4);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, 30, 25);
+
+  // Head
+  drawBlock(ctx, 12, 2, 6, 6, '#fdbf69');
+  drawBlock(ctx, 13, 3, 1, 1, '#000'); // left eye
+  drawBlock(ctx, 16, 3, 1, 1, '#000'); // right eye
+  drawBlock(ctx, 14, 5, 2, 1, '#ef4444'); // happy mouth
+
+  // Body (blue for sports)
+  drawBlock(ctx, 11, 8, 8, 5, '#3b82f6');
+
+  // Arms
+  drawBlock(ctx, 8, 9, 2, 3, '#fdbf69');
+  drawBlock(ctx, 20, 9, 2, 3, '#fdbf69');
+
+  // Legs
+  drawBlock(ctx, 12, 13, 2, 5, '#1e40af');
+  drawBlock(ctx, 16, 13, 2, 5, '#1e40af');
+
+  // Football held above (brown with white stripe)
+  drawBlock(ctx, 19, 3, 5, 3, '#92400e');
+  drawBlock(ctx, 20, 4, 3, 1, '#ffffff');
+}
+
+// Finance Agent (Green) - with Money Bag
+function drawFinanceAgent(ctx) {
+  ctx.scale(4, 4);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, 30, 25);
+
+  // Head
+  drawBlock(ctx, 12, 2, 6, 6, '#fdbf69');
+  drawBlock(ctx, 13, 3, 1, 1, '#000');
+  drawBlock(ctx, 16, 3, 1, 1, '#000');
+  drawBlock(ctx, 14, 5, 2, 1, '#10b981'); // happy mouth
+
+  // Body (green for finance)
+  drawBlock(ctx, 11, 8, 8, 5, '#10b981');
+
+  // Arms
+  drawBlock(ctx, 8, 9, 2, 3, '#fdbf69');
+  drawBlock(ctx, 20, 9, 2, 3, '#fdbf69');
+
+  // Legs
+  drawBlock(ctx, 12, 13, 2, 5, '#059669');
+  drawBlock(ctx, 16, 13, 2, 5, '#059669');
+
+  // Money bag held above (green with $ symbol)
+  drawBlock(ctx, 19, 4, 4, 4, '#10b981');
+  drawBlock(ctx, 20, 5, 2, 2, '#fbbf24');
+  drawBlock(ctx, 21, 5, 1, 1, '#000'); // $ mark
+}
+
+// Creative Agent (Purple) - with Paintbrush
+function drawCreativeAgent(ctx) {
+  ctx.scale(4, 4);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, 30, 25);
+
+  // Head
+  drawBlock(ctx, 12, 2, 6, 6, '#fdbf69');
+  drawBlock(ctx, 13, 3, 1, 1, '#000');
+  drawBlock(ctx, 16, 3, 1, 1, '#000');
+  drawBlock(ctx, 14, 5, 2, 1, '#a855f7'); // happy mouth
+
+  // Body (purple for creative)
+  drawBlock(ctx, 11, 8, 8, 5, '#a855f7');
+
+  // Arms
+  drawBlock(ctx, 8, 9, 2, 3, '#fdbf69');
+  drawBlock(ctx, 20, 9, 2, 3, '#fdbf69');
+
+  // Legs
+  drawBlock(ctx, 12, 13, 2, 5, '#7c3aed');
+  drawBlock(ctx, 16, 13, 2, 5, '#7c3aed');
+
+  // Paintbrush held above
+  drawBlock(ctx, 22, 2, 1, 6, '#8b5a2b'); // handle
+  drawBlock(ctx, 21, 1, 3, 2, '#ec4899'); // bristles
+}
+
+// Tech Agent (Orange) - with Gear
+function drawTechAgent(ctx) {
+  ctx.scale(4, 4);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, 30, 25);
+
+  // Head
+  drawBlock(ctx, 12, 2, 6, 6, '#fdbf69');
+  drawBlock(ctx, 13, 3, 1, 1, '#000');
+  drawBlock(ctx, 16, 3, 1, 1, '#000');
+  drawBlock(ctx, 14, 5, 2, 1, '#f97316'); // happy mouth
+
+  // Body (orange for tech)
+  drawBlock(ctx, 11, 8, 8, 5, '#f97316');
+
+  // Arms
+  drawBlock(ctx, 8, 9, 2, 3, '#fdbf69');
+  drawBlock(ctx, 20, 9, 2, 3, '#fdbf69');
+
+  // Legs
+  drawBlock(ctx, 12, 13, 2, 5, '#ea580c');
+  drawBlock(ctx, 16, 13, 2, 5, '#ea580c');
+
+  // Gear held above
+  drawBlock(ctx, 20, 2, 4, 4, '#64748b'); // gear body
+  drawBlock(ctx, 19, 3, 1, 2, '#64748b'); // gear tooth
+  drawBlock(ctx, 24, 3, 1, 2, '#64748b'); // gear tooth
+  drawBlock(ctx, 21, 1, 2, 1, '#64748b'); // gear tooth
+  drawBlock(ctx, 21, 5, 2, 1, '#64748b'); // gear tooth
+}
+
+// Draw all agents
+drawSportsAgent(document.getElementById('canvasSports').getContext('2d'));
+drawFinanceAgent(document.getElementById('canvasFinance').getContext('2d'));
+drawCreativeAgent(document.getElementById('canvasCreative').getContext('2d'));
+drawTechAgent(document.getElementById('canvasTech').getContext('2d'));
+</script>

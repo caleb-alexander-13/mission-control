@@ -2,426 +2,259 @@ import { useEffect, useRef, useState } from 'react'
 import * as canvasHelpers from './canvasHelpers'
 import * as pixelArtCharacters from './pixelArtCharacters'
 import * as animationUtils from './animationUtils'
+import * as roomDrawing from './roomDrawing'
+import {
+  initAgentStates,
+  updateAgentStates,
+  STUCK_THRESHOLD,
+  DROPOFF_DURATION,
+  PROCESS_DURATION,
+  EXECUTE_DURATION,
+} from './agentWalking'
+import { drawWalkingAgent } from './walkingCharacters'
 
-const API_BASE = 'http://localhost:8000/api'
-
-// Layout constants
-const CANVAS_WIDTH = 1000
-const CANVAS_HEIGHT = 800
-const GRID_PADDING = 20
-const AGENT_CARD_WIDTH = (CANVAS_WIDTH - GRID_PADDING * 3) / 2  // 490px
-const AGENT_CARD_HEIGHT = 280
-const EXAMINATION_HEIGHT = 160
-const EXECUTIONER_HEIGHT = 160
-const FLOOR_Y = AGENT_CARD_HEIGHT * 2 + GRID_PADDING * 2
-
-// Agent layout configuration
-const AGENTS_RD = [
-  { id: 'sports', name: 'sports', label: '⚽', color: '#3b82f6', x: GRID_PADDING, y: GRID_PADDING },
-  { id: 'finance', name: 'finance', label: '💰', color: '#10b981', x: GRID_PADDING + AGENT_CARD_WIDTH + GRID_PADDING, y: GRID_PADDING },
-  { id: 'creative', name: 'creative', label: '🎨', color: '#a855f7', x: GRID_PADDING, y: GRID_PADDING + AGENT_CARD_HEIGHT + GRID_PADDING },
-  { id: 'tech', name: 'tech', label: '⚙️', color: '#f97316', x: GRID_PADDING + AGENT_CARD_WIDTH + GRID_PADDING, y: GRID_PADDING + AGENT_CARD_HEIGHT + GRID_PADDING }
-]
-
-const EXAMINATION_AGENT = {
-  id: 'examination',
-  name: 'examination',
-  label: '📋',
-  color: '#f59e0b',
-  x: GRID_PADDING,
-  y: FLOOR_Y + GRID_PADDING,
-  width: CANVAS_WIDTH - GRID_PADDING * 2
-}
-
-const EXECUTIONER_AGENT = {
-  id: 'executioner',
-  name: 'executioner',
-  label: '⚡',
-  color: '#ef4444',
-  x: GRID_PADDING,
-  y: FLOOR_Y + GRID_PADDING + EXAMINATION_HEIGHT + GRID_PADDING,
-  width: CANVAS_WIDTH - GRID_PADDING * 2
-}
-
-export default function PixelOffice() {
+export default function PixelOffice({ pipelineStatus, findings, examinations, pipelineActions, costs }) {
   const canvasRef = useRef(null)
-  const [data, setData] = useState({
-    status: null,
-    findings: {},
-    examinations: null,
-    actions: null
-  })
-  const [animationState, setAnimationState] = useState({
-    time: 0,
-    agents: {}
-  })
+  const [animTime, setAnimTime] = useState(0)
 
-  // Fetch all required data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [statusRes, findingsRes, examsRes, actionsRes] = await Promise.all([
-          fetch(`${API_BASE}/agent-pipeline/status`).then(r => r.json()),
-          fetch(`${API_BASE}/agent-pipeline/findings?importance_min=6`).then(r => r.json()),
-          fetch(`${API_BASE}/agent-pipeline/examinations`).then(r => r.json()),
-          fetch(`${API_BASE}/agent-pipeline/actions`).then(r => r.json())
-        ])
+  const agentStatesRef = useRef(null)
+  if (agentStatesRef.current === null) {
+    agentStatesRef.current = initAgentStates()
+  }
 
-        // Map latest finding per agent
-        const latestByAgent = {}
-        const findingsArray = Array.isArray(findingsRes) ? findingsRes : findingsRes.items || []
-        findingsArray.forEach(f => {
-          if (!latestByAgent[f.agent_name]) {
-            latestByAgent[f.agent_name] = f
-          }
-        })
-
-        setData({
-          status: statusRes || {},
-          findings: latestByAgent,
-          examinations: Array.isArray(examsRes) ? examsRes : examsRes?.items || [],
-          actions: Array.isArray(actionsRes) ? actionsRes : actionsRes?.items || []
-        })
-      } catch (err) {
-        console.error('Error fetching agent pipeline data:', err)
-      }
-    }
-
-    fetchData()
-    const interval = setInterval(fetchData, 5000)
-    return () => clearInterval(interval)
-  }, [])
-
-  // Animation loop
   useEffect(() => {
     let animationFrameId
     const startTime = Date.now()
-
     const animate = () => {
       const elapsed = Date.now() - startTime
-      setAnimationState(prev => ({
-        ...prev,
-        time: elapsed
-      }))
+      setAnimTime(elapsed)
       animationFrameId = requestAnimationFrame(animate)
     }
-
     animationFrameId = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(animationFrameId)
   }, [])
 
-  // Canvas rendering
   useEffect(() => {
     if (!canvasRef.current) return
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
-    canvas.width = CANVAS_WIDTH
-    canvas.height = CANVAS_HEIGHT
+    canvas.width = roomDrawing.CANVAS_WIDTH
+    canvas.height = roomDrawing.CANVAS_HEIGHT
 
-    // Draw static layout
-    drawOfficeLayout(ctx)
+    updateAgentStates(agentStatesRef.current, pipelineStatus, animTime)
+    const states = agentStatesRef.current
 
-    // Draw R&D agents with data
-    AGENTS_RD.forEach(agent => {
-      const agentStatus = safeGetStatus(agent.name)
-      const finding = safeGetFinding(agent.name)
-      drawRDAgentCard(ctx, agent, agentStatus, finding, animationState.time)
+    // Computed values
+    const examPending = pipelineStatus?.agents?.examination?.pending_examinations ?? 0
+    const actionPending = pipelineStatus?.agents?.executioner?.pending_actions ?? 0
+    const findingsCount = Object.keys(findings || {}).length
+    const completedCount = (Array.isArray(pipelineActions) ? pipelineActions : []).filter(a => a.result !== 'pending').length
+    const archiveIsGlowing = Object.values(states).some(s =>
+      s.completionFlashAt && (animTime - s.completionFlashAt) < 2000)
+    const screenData = {
+      findingsCount,
+      costTotal: costs?.today?.estimated_usd != null ? costs.today.estimated_usd.toFixed(2) : '--',
+      examPending,
+      actionPending,
+    }
+
+    // 1. Background
+    ctx.fillStyle = '#111'
+    ctx.fillRect(0, 0, roomDrawing.CANVAS_WIDTH, roomDrawing.CANVAS_HEIGHT)
+
+    // 2. Floor
+    roomDrawing.drawFloor(ctx)
+
+    // 3. Wall (with live screen data)
+    roomDrawing.drawWall(ctx, screenData)
+
+    // 4. Left-wall furniture
+    roomDrawing.drawFileCabinet(ctx, roomDrawing.FILE_CABINET_X, roomDrawing.FILE_CABINET_Y)
+    roomDrawing.drawWhiteboard(ctx, roomDrawing.WHITEBOARD_X, roomDrawing.WHITEBOARD_Y, {
+      findings: findingsCount,
+      examinations: examPending,
     })
 
-    // Draw Examination agent
-    const examCount = safeGetExamCount()
-    drawExaminationAgent(ctx, examCount, animationState.time)
+    // 5. Right-wall furniture
+    roomDrawing.drawCoffeeMachine(ctx, roomDrawing.COFFEE_MACHINE_X, roomDrawing.COFFEE_MACHINE_Y, animTime)
+    roomDrawing.drawArchiveShelf(ctx, roomDrawing.ARCHIVE_SHELF_X, roomDrawing.ARCHIVE_SHELF_Y, completedCount, animTime, archiveIsGlowing)
 
-    // Draw Executioner agent
-    const actionCount = safeGetActionCount()
-    drawExecutionerAgent(ctx, actionCount, animationState.time)
-  }, [data, animationState])
+    // 6. Room decor (central table, plants)
+    roomDrawing.drawRoomDecor(ctx)
 
-  // Safe data getter functions
-  const safeGetFinding = (agent) => data.findings?.[agent] || null
-  const safeGetStatus = (agent) => data.status?.agents?.[agent] || { status: 'idle', findings_pending: 0 }
-  const safeGetExamCount = () => data.examinations?.filter(e => e.status === 'pending_action').length || 0
-  const safeGetActionCount = () => data.actions?.filter(a => a.result === 'pending').length || 0
+    // 7. R&D agent workstations
+    roomDrawing.ROOM_AGENTS.forEach(agent => drawAgentWorkstation(agent))
 
-  function drawOfficeLayout(ctx) {
-    const { Colors } = canvasHelpers
+    // 8. Examination station
+    const examCount = (Array.isArray(examinations) ? examinations : []).filter(e => e.status === 'pending_action').length
+    drawSpecialStation(roomDrawing.EXAM_AGENT, examCount, 'examination')
 
-    // Background
-    ctx.fillStyle = Colors.background
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+    // 9. Executioner station
+    const actionCount = (Array.isArray(pipelineActions) ? pipelineActions : []).filter(a => a.result === 'pending').length
+    drawSpecialStation(roomDrawing.EXEC_AGENT, actionCount, 'executioner')
 
-    // Grid floor pattern on agent card area
-    ctx.strokeStyle = Colors.gridLine
-    ctx.lineWidth = 1
-    for (let x = 0; x < CANVAS_WIDTH; x += 40) {
-      ctx.beginPath()
-      ctx.moveTo(x, FLOOR_Y)
-      ctx.lineTo(x, FLOOR_Y + EXAMINATION_HEIGHT + EXECUTIONER_HEIGHT + GRID_PADDING * 2)
-      ctx.stroke()
-    }
+    // 10. Floor inbox trays
+    roomDrawing.drawFloorInboxTray(ctx, roomDrawing.EXAM_INBOX_X, roomDrawing.EXAM_INBOX_Y, examPending, 'EXAM IN', '#f59e0b')
+    roomDrawing.drawFloorInboxTray(ctx, roomDrawing.ACTION_INBOX_X, roomDrawing.ACTION_INBOX_Y, actionPending, 'ACTION IN', '#ef4444')
 
-    // Draw R&D agent card backgrounds
-    AGENTS_RD.forEach(agent => {
-      canvasHelpers.drawRoundedRect(
-        ctx,
-        agent.x,
-        agent.y,
-        AGENT_CARD_WIDTH,
-        AGENT_CARD_HEIGHT,
-        4,
-        Colors.card,
-        agent.color,
-        2
-      )
+    // 11. Walking agents second pass (renders on top of all furniture)
+    const agentIds = ['sports', 'finance', 'creative', 'tech', 'examination', 'executioner']
+    const NON_IDLE = ['idle', 'idle_at_desk']
+    agentIds.forEach(id => {
+      const agentState = states[id]
+      if (agentState && !NON_IDLE.includes(agentState.state)) {
+        drawWalkingAgent(ctx, id, agentState, animTime)
+      }
     })
 
-    // Draw Examination card background
-    canvasHelpers.drawRoundedRect(
+    // 12. Completion sparkles
+    agentIds.forEach(id => {
+      const agentState = states[id]
+      if (!agentState?.completionFlashAt) return
+      const age = animTime - agentState.completionFlashAt
+      const cx = agentState.x
+      const cy = agentState.y - 20
+      const particles = animationUtils.getSparkleParticles(cx, cy, age)
+      if (particles.length > 0) {
+        roomDrawing.drawCompletionSparkles(ctx, cx, cy, particles)
+      }
+    })
+
+    // 13. Stuck warnings
+    agentIds.forEach(id => {
+      const agentState = states[id]
+      if (!agentState?.stuckSince) return
+      const stuckFor = animTime - agentState.stuckSince
+      if (stuckFor > STUCK_THRESHOLD) {
+        const alpha = animationUtils.getStuckWarningAlpha(animTime)
+        roomDrawing.drawWarningTriangle(ctx, agentState.x, agentState.y - 30, alpha)
+      }
+    })
+
+    // 14. Cost meter
+    const currentCost = costs?.today?.estimated_usd ?? 0
+    roomDrawing.drawCostMeter(
       ctx,
-      EXAMINATION_AGENT.x,
-      EXAMINATION_AGENT.y,
-      EXAMINATION_AGENT.width,
-      EXAMINATION_HEIGHT,
-      4,
-      Colors.card,
-      EXAMINATION_AGENT.color,
-      2
+      roomDrawing.COST_METER_X,
+      roomDrawing.COST_METER_Y,
+      roomDrawing.COST_METER_W,
+      roomDrawing.COST_METER_H,
+      currentCost,
+      roomDrawing.BUDGET_LIMIT,
+      animTime
     )
 
-    // Draw Executioner card background
-    canvasHelpers.drawRoundedRect(
-      ctx,
-      EXECUTIONER_AGENT.x,
-      EXECUTIONER_AGENT.y,
-      EXECUTIONER_AGENT.width,
-      EXECUTIONER_HEIGHT,
-      4,
-      Colors.card,
-      EXECUTIONER_AGENT.color,
-      2
-    )
+    // Helper: draw R&D agent workstation with glow/progress/stuck layers
+    function drawAgentWorkstation(agent) {
+      const { id, label, color, deskX, deskY } = agent
+      const charCX = deskX + roomDrawing.DESK_W / 2
+      const charY = deskY + roomDrawing.DESK_H + 15
 
-    // Show loading message if no data
-    if (!data.status || !Object.keys(data.findings).length) {
-      ctx.font = '14px Arial'
-      ctx.fillStyle = Colors.textMuted
-      ctx.textAlign = 'center'
-      ctx.fillText('Loading agent data...', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2)
-    }
-  }
+      const agentState = states[id]
+      const isIdle = !agentState || agentState.state === 'idle'
+      const isDropping = agentState?.state === 'dropping_off'
+      const isStuck = agentState?.stuckSince && (animTime - agentState.stuckSince) > STUCK_THRESHOLD
 
-  function drawRDAgentCard(ctx, agent, agentStatus, finding, animationTime) {
-    const cardX = agent.x
-    const cardY = agent.y
-    const centerX = cardX + AGENT_CARD_WIDTH / 2
-    const centerY = cardY + AGENT_CARD_HEIGHT / 2
+      // Desk glow when processing
+      if (isDropping) {
+        const glowR = animationUtils.getWorkingGlowRadius(animTime)
+        roomDrawing.drawDeskWorkingGlow(ctx, deskX, deskY, roomDrawing.DESK_W, roomDrawing.DESK_H, color, glowR)
+      }
 
-    // Draw character
-    pixelArtCharacters.drawRDAgentCharacter(ctx, agent.name, centerX - 30, cardY + 20)
-    pixelArtCharacters.drawHeldObject(ctx, agent.name, centerX - 30, cardY + 20)
+      roomDrawing.drawDesk(ctx, deskX, deskY, roomDrawing.DESK_W, roomDrawing.DESK_H, color)
+      roomDrawing.drawDomainObject(ctx, id, deskX, deskY)
 
-    // Draw importance score (if finding exists)
-    if (finding) {
-      const scoreColor = canvasHelpers.getImportanceColor(finding.importance_score)
-      canvasHelpers.drawText(
-        ctx,
-        `${finding.importance_score}/10`,
-        centerX,
-        cardY + 15,
-        'bold 14px Arial',
-        scoreColor
-      )
+      // Stuck border
+      if (isStuck) {
+        const ba = animationUtils.getStuckBorderAlpha(animTime)
+        roomDrawing.drawStuckDeskBorder(ctx, deskX, deskY, roomDrawing.DESK_W, roomDrawing.DESK_H, ba)
+      }
 
-      // Draw category badge
-      canvasHelpers.drawBadge(
-        ctx,
-        finding.category || 'unknown',
-        centerX,
-        cardY + AGENT_CARD_HEIGHT - 30,
-        '#4b5563',
-        '#e2e8f0'
-      )
+      // Progress bar when dropping off
+      if (isDropping) {
+        const elapsed = animTime - agentState.stateStartTime
+        roomDrawing.drawDeskProgressBar(ctx, deskX, deskY, roomDrawing.DESK_W, elapsed, DROPOFF_DURATION, color)
+      }
 
-      // Draw finding text in speech bubble
-      const bubbleX = centerX
-      const bubbleY = cardY + AGENT_CARD_HEIGHT - 50
-      const bubbleW = AGENT_CARD_WIDTH - 20
-      const bubbleH = 35
-      canvasHelpers.drawRoundedRect(
-        ctx,
-        bubbleX - bubbleW / 2,
-        bubbleY - bubbleH / 2,
-        bubbleW,
-        bubbleH,
-        3,
-        '#1a1a2e',
-        agent.color,
-        1
-      )
-
-      // Finding text (truncate to fit)
-      const text = (finding.finding_text || '').substring(0, 40) +
-                   (finding.finding_text?.length > 40 ? '...' : '')
-      ctx.font = '10px Arial'
-      ctx.fillStyle = canvasHelpers.Colors.text
-      ctx.textAlign = 'center'
-      ctx.fillText(text, bubbleX, bubbleY + 2)
+      if (isIdle) {
+        const bob = animationUtils.getIdleBreathePulse(animTime)
+        pixelArtCharacters.drawRDAgentCharacter(ctx, id, charCX - 13, charY + bob)
+        pixelArtCharacters.drawHeldObject(ctx, id, charCX - 13, charY + bob)
+        roomDrawing.drawAgentNameLabel(ctx, charCX, charY, label, color)
+        const agentStatus = pipelineStatus?.agents?.[id] || {}
+        const isWorking = agentStatus.status === 'working'
+        roomDrawing.drawStatusDot(ctx, charCX, charY, isWorking, animTime)
+        const finding = findings?.[id]
+        if (finding?.finding_text) {
+          const bubbleBottomY = deskY - 8
+          roomDrawing.drawSpeechBubble(ctx, charCX, bubbleBottomY, finding.finding_text, color)
+          roomDrawing.drawImportanceBadge(ctx, charCX + 80, deskY - 35, finding.importance_score)
+        }
+      }
     }
 
-    // Draw pending count
-    const pendingCount = agentStatus?.findings_pending || 0
-    const pendingColor = pendingCount > 0 ? '#fbbf24' : '#10b981'
-    canvasHelpers.drawText(
-      ctx,
-      `${pendingCount} pending`,
-      centerX,
-      cardY + AGENT_CARD_HEIGHT - 10,
-      '10px monospace',
-      pendingColor,
-      'center'
-    )
+    function drawSpecialStation(agent, count, type) {
+      const { id, label, color, deskX, deskY, deskW = roomDrawing.DESK_W } = agent
+      const charCX = deskX + deskW / 2
+      const charY = deskY + roomDrawing.DESK_H + 15
 
-    // Draw status indicator with breathing animation
-    const isWorking = agentStatus?.status === 'working'
-    const breathe = isWorking ? 0 : animationUtils.getIdleBreathePulse(animationTime)
-    const pulseSize = isWorking ? 5 + Math.sin(animationTime / 150) : 3 + breathe
-    const indicatorColor = isWorking ? '#fbbf24' : '#10b981'
+      const agentState = states[id]
+      const isIdleAtDesk = !agentState || agentState.state === 'idle_at_desk'
+      const isProcessing = agentState?.state === (type === 'examination' ? 'processing_at_desk' : 'executing_at_desk')
+      const processDuration = type === 'examination' ? PROCESS_DURATION : EXECUTE_DURATION
+      const isStuck = agentState?.stuckSince && (animTime - agentState.stuckSince) > STUCK_THRESHOLD
 
-    canvasHelpers.drawCircle(
-      ctx,
-      centerX + 20,
-      cardY + 25,
-      pulseSize,
-      indicatorColor
-    )
-  }
+      if (isProcessing) {
+        const glowR = animationUtils.getWorkingGlowRadius(animTime)
+        roomDrawing.drawDeskWorkingGlow(ctx, deskX, deskY, deskW, roomDrawing.DESK_H, color, glowR)
+      }
 
-  function drawExaminationAgent(ctx, examsCount, animationTime) {
-    const x = EXAMINATION_AGENT.x
-    const y = EXAMINATION_AGENT.y
-    const centerX = x + EXAMINATION_AGENT.width / 2
+      roomDrawing.drawDesk(ctx, deskX, deskY, deskW, roomDrawing.DESK_H, color)
+      roomDrawing.drawDomainObject(ctx, id, deskX, deskY)
 
-    // Draw character
-    pixelArtCharacters.drawExaminationAgent(ctx, centerX - 30, y + 15)
+      if (isStuck) {
+        const ba = animationUtils.getStuckBorderAlpha(animTime)
+        roomDrawing.drawStuckDeskBorder(ctx, deskX, deskY, deskW, roomDrawing.DESK_H, ba)
+      }
 
-    // Draw status text
-    const isAnalyzing = examsCount > 0
-    const statusColor = isAnalyzing ? '#fbbf24' : '#10b981'
-    const statusText = isAnalyzing ? `Analyzing ${examsCount} findings...` : 'Idle'
+      if (isProcessing) {
+        const elapsed = animTime - agentState.stateStartTime
+        roomDrawing.drawDeskProgressBar(ctx, deskX, deskY, deskW, elapsed, processDuration, color)
+      }
 
-    canvasHelpers.drawText(
-      ctx,
-      statusText,
-      centerX + 40,
-      y + 30,
-      'bold 14px Arial',
-      statusColor
-    )
+      if (isIdleAtDesk) {
+        if (type === 'examination') {
+          pixelArtCharacters.drawExaminationAgent(ctx, charCX - 19, charY)
+        } else {
+          pixelArtCharacters.drawExecutionerAgent(ctx, charCX - 19, charY)
+        }
+        roomDrawing.drawAgentNameLabel(ctx, charCX, charY, label, color)
+        roomDrawing.drawStatusDot(ctx, charCX, charY, count > 0, animTime)
+      }
 
-    // Draw pending count (bold)
-    canvasHelpers.drawText(
-      ctx,
-      `${examsCount} pending examinations`,
-      centerX + 40,
-      y + 50,
-      '12px monospace',
-      canvasHelpers.Colors.text
-    )
-
-    // Draw animated papers stacking (visual queue metaphor)
-    const paperStackHeight = Math.min(examsCount * 2, 20) // max 20px
-    const paperY = y + 90 - paperStackHeight
-    for (let i = 0; i < Math.min(examsCount, 10); i++) {
-      const offset = (animationTime / 50 + i) % 3 // slow drift
-      canvasHelpers.drawRect(
-        ctx,
-        centerX - 15,
-        paperY + i * 2 + offset,
-        30,
-        1,
-        '#cbd5e1',
-        '#64748b',
-        0.5
-      )
+      if (count > 0) {
+        const bubbleText = type === 'examination'
+          ? `${count} pending exam${count > 1 ? 's' : ''}`
+          : `${count} pending action${count > 1 ? 's' : ''}`
+        roomDrawing.drawSpeechBubble(ctx, charCX, deskY - 8, bubbleText, color)
+      }
     }
-  }
-
-  function drawExecutionerAgent(ctx, actionsCount, animationTime) {
-    const x = EXECUTIONER_AGENT.x
-    const y = EXECUTIONER_AGENT.y
-    const centerX = x + EXECUTIONER_AGENT.width / 2
-
-    // Draw character
-    pixelArtCharacters.drawExecutionerAgent(ctx, centerX - 30, y + 15)
-
-    // Determine status
-    let statusText = 'Idle'
-    let statusColor = '#10b981'
-
-    if (actionsCount > 0) {
-      statusText = `${actionsCount} pending actions`
-      statusColor = '#fbbf24'
-    }
-
-    // Draw status text
-    canvasHelpers.drawText(
-      ctx,
-      statusText,
-      centerX + 40,
-      y + 30,
-      'bold 14px Arial',
-      statusColor
-    )
-
-    // Draw execution detail
-    const recentAction = data.actions?.[0]
-    if (recentAction) {
-      const resultColor = recentAction.result === 'success' ? '#10b981' :
-                         recentAction.result === 'pending' ? '#fbbf24' : '#ef4444'
-      canvasHelpers.drawText(
-        ctx,
-        `Last: ${recentAction.result}`,
-        centerX + 40,
-        y + 50,
-        '11px monospace',
-        resultColor
-      )
-    }
-
-    // Draw SMS indicator if awaiting approval
-    if (actionsCount > 0) {
-      canvasHelpers.drawText(
-        ctx,
-        '📱 awaiting approval',
-        centerX + 40,
-        y + 70,
-        '10px monospace',
-        '#60a5fa'
-      )
-    }
-  }
+  }, [pipelineStatus, findings, examinations, pipelineActions, costs, animTime])
 
   return (
-    <div className="glass p-6">
-      <h2 className="text-lg font-semibold mb-4">Pixel Office — Agent Pipeline</h2>
-      <div className="w-full bg-gray-900 rounded border border-gray-700 overflow-hidden">
-        <canvas
-          ref={canvasRef}
-          className="w-full block"
-          style={{
-            maxWidth: '100%',
-            height: 'auto',
-            display: 'block',
-            imageRendering: 'pixelated'
-          }}
-        />
-      </div>
-      <div className="mt-4 grid grid-cols-3 gap-4 text-xs text-gray-400">
-        <div>🟢 Idle | 🟡 Working</div>
-        <div>📊 Updates every 5s</div>
-        <div>→ Research → Analysis → Action</div>
-      </div>
+    <div className="w-full h-full flex items-center justify-center">
+      <canvas
+        ref={canvasRef}
+        className="block"
+        style={{
+          maxWidth: '100%',
+          maxHeight: '100%',
+          imageRendering: 'pixelated',
+          width: '100%',
+          height: 'auto',
+        }}
+      />
     </div>
   )
 }
