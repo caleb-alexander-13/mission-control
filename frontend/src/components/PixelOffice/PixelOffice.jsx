@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import * as canvasHelpers from './canvasHelpers'
 
 const API_BASE = 'http://localhost:8000/api'
 
@@ -89,7 +90,7 @@ export default function PixelOffice() {
     return () => clearInterval(interval)
   }, [])
 
-  // Animation loop
+  // Canvas rendering
   useEffect(() => {
     if (!canvasRef.current) return
 
@@ -98,25 +99,70 @@ export default function PixelOffice() {
     canvas.width = CANVAS_WIDTH
     canvas.height = CANVAS_HEIGHT
 
-    let animationId
-    let startTime = Date.now()
+    // Draw static layout
+    drawOfficeLayout(ctx)
 
-    const animate = () => {
-      const now = Date.now()
-      const elapsed = now - startTime
+    // TODO: Draw agents and data in next tasks
+  }, [data, animationState])
 
-      setAnimationState(prev => ({
-        ...prev,
-        time: elapsed
-      }))
+  function drawOfficeLayout(ctx) {
+    const { Colors } = canvasHelpers
 
-      // Render will happen in next effect
-      animationId = requestAnimationFrame(animate)
+    // Background
+    ctx.fillStyle = Colors.background
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+
+    // Grid floor pattern on agent card area
+    ctx.strokeStyle = Colors.gridLine
+    ctx.lineWidth = 1
+    for (let x = 0; x < CANVAS_WIDTH; x += 40) {
+      ctx.beginPath()
+      ctx.moveTo(x, FLOOR_Y)
+      ctx.lineTo(x, FLOOR_Y + EXAMINATION_HEIGHT + EXECUTIONER_HEIGHT + GRID_PADDING * 2)
+      ctx.stroke()
     }
 
-    animationId = requestAnimationFrame(animate)
-    return () => cancelAnimationFrame(animationId)
-  }, [])
+    // Draw R&D agent card backgrounds
+    AGENTS_RD.forEach(agent => {
+      canvasHelpers.drawRoundedRect(
+        ctx,
+        agent.x,
+        agent.y,
+        AGENT_CARD_WIDTH,
+        AGENT_CARD_HEIGHT,
+        4,
+        Colors.card,
+        agent.color,
+        2
+      )
+    })
+
+    // Draw Examination card background
+    canvasHelpers.drawRoundedRect(
+      ctx,
+      EXAMINATION_AGENT.x,
+      EXAMINATION_AGENT.y,
+      EXAMINATION_AGENT.width,
+      EXAMINATION_HEIGHT,
+      4,
+      Colors.card,
+      EXAMINATION_AGENT.color,
+      2
+    )
+
+    // Draw Executioner card background
+    canvasHelpers.drawRoundedRect(
+      ctx,
+      EXECUTIONER_AGENT.x,
+      EXECUTIONER_AGENT.y,
+      EXECUTIONER_AGENT.width,
+      EXECUTIONER_HEIGHT,
+      4,
+      Colors.card,
+      EXECUTIONER_AGENT.color,
+      2
+    )
+  }
 
   return (
     <div className="glass p-6">
