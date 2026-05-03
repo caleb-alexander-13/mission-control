@@ -210,10 +210,19 @@ def cost_alert_check():
         cursor.execute('SELECT threshold_pct FROM cost_alerts WHERE alert_date = ?', (today_str,))
         already_alerted = {row['threshold_pct'] for row in cursor.fetchall()}
 
+        # Check for recent alerts (within last hour) to prevent duplicate edge-case sends
+        one_hour_ago = int((datetime.now() - timedelta(hours=1)).timestamp() * 1000)
+        cursor.execute(
+            'SELECT threshold_pct FROM cost_alerts WHERE alert_date = ? AND created_at > ?',
+            (today_str, one_hour_ago)
+        )
+        recently_alerted = {row['threshold_pct'] for row in cursor.fetchall()}
+
         newly_triggered = []
         for pct in ALERT_THRESHOLDS:
             threshold_amount = ALERT_BUDGET * pct / 100
-            if today_cost >= threshold_amount and pct not in already_alerted:
+            # Send alert if threshold crossed, not already alerted today, and not sent in the last hour
+            if today_cost >= threshold_amount and pct not in already_alerted and pct not in recently_alerted:
                 msg = f"Mission Control: {pct}% budget alert — ${today_cost:.2f} spent today (limit ${ALERT_BUDGET:.0f})"
                 sms_ok = _send_notification(msg, title=f"Budget {pct}% Reached")
                 cursor.execute(
