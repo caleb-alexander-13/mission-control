@@ -1,0 +1,150 @@
+from fastapi import APIRouter
+import sqlite3
+from pathlib import Path
+from datetime import datetime, timedelta
+
+router = APIRouter()
+
+DB_PATH = Path.home() / 'Desktop' / 'mission-control' / 'backend' / 'mission_control.db'
+
+# Pricing per MTok
+PRICING = {
+    'claude-sonnet-4-6': {
+        'input': 3.0,
+        'output': 15.0,
+        'cache_read': 0.30,
+        'cache_creation': 3.75
+    },
+    'claude-haiku-4-5-20251001': {
+        'input': 0.80,
+        'output': 4.0,
+        'cache_read': 0.08,
+        'cache_creation': 1.00
+    },
+    'default': {
+        'input': 1.0,
+        'output': 5.0,
+        'cache_read': 0.10,
+        'cache_creation': 1.25
+    }
+}
+
+def calculate_cost(tokens, token_type, model):
+    """Calculate USD cost from token counts."""
+    model_pricing = PRICING.get(model, PRICING['default'])
+    price_per_mtok = model_pricing.get(token_type, 1.0)
+    return (tokens / 1_000_000) * price_per_mtok
+
+@router.get("/cost/summary")
+def cost_summary():
+    """Get cost summary: today, this week, all-time, and per-session breakdown."""
+    try:
+        conn = sqlite3.connect(str(DB_PATH), timeout=5)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        now = datetime.now()
+        today_start = int(now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+        week_start = int((now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+
+        def calc_period(start_time):
+            """Calculate cost for a time period."""
+            cursor.execute('''
+                SELECT SUM(input_tokens) as input, SUM(output_tokens) as output,
+                       SUM(cache_read_tokens) as cache_read, SUM(cache_creation_tokens) as cache_creation
+                FROM token_usage WHERE created_at >= ?
+            ''', (start_time,))
+            row = cursor.fetchone()
+            if not row or not row['input']:
+                return {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_creation_tokens": 0, "estimated_usd": 0}
+
+            input_tokens = row['input'] or 0
+            output_tokens = row['output'] or 0
+            cache_read = row['cache_read'] or 0
+            cache_creation = row['cache_creation'] or 0
+
+            # Use default pricing for now (MVP)
+            usd = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000) + \
+                  (cache_read * 0.30 / 1_000_000) + (cache_creation * 3.75 / 1_000_000)
+
+            return {
+                "input_tokens": int(input_tokens),
+                "output_tokens": int(output_tokens),
+                "cache_read_tokens": int(cache_read),
+                "cache_creation_tokens": int(cache_creation),
+                "estimated_usd": round(usd, 4)
+            }
+
+        today = calc_period(today_start)
+        week = calc_period(week_start)
+
+        # All-time
+        cursor.execute('''
+            SELECT SUM(input_tokens) as input, SUM(output_tokens) as output,
+                   SUM(cache_read_tokens) as cache_read, SUM(cache_creation_tokens) as cache_creation
+            FROM token_usage
+        ''')
+        row = cursor.fetchone()
+        if row and row['input']:
+            input_tokens = row['input'] or 0
+            output_tokens = row['output'] or 0
+            cache_read = row['cache_read'] or 0
+            cache_creation = row['cache_creation'] or 0
+            usd = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000) + \
+                  (cache_read * 0.30 / 1_000_000) + (cache_creation * 3.75 / 1_000_000)
+            all_time = {
+                "input_tokens": int(input_tokens),
+                "output_tokens": int(output_tokens),
+                "cache_read_tokens": int(cache_read),
+                "cache_creation_tokens": int(cache_creation),
+                "estimated_usd": round(usd, 4)
+            }
+        else:
+            all_time = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_creation_tokens": 0, "estimated_usd": 0}
+
+        # Per-session
+        cursor.execute('''
+            SELECT s.session_id, s.project, s.started_at,
+                   SUM(t.input_tokens) as input, SUM(t.output_tokens) as output,
+                   SUM(t.cache_read_tokens) as cache_read, SUM(t.cache_creation_tokens) as cache_creation
+            FROM sessions s
+            LEFT JOIN token_usage t ON s.session_id = t.session_id
+            GROUP BY s.session_id
+            ORDER BY s.started_at DESC
+            LIMIT 20
+        ''')
+
+        by_session = []
+        for row in cursor.fetchall():
+            input_tokens = row['input'] or 0
+            output_tokens = row['output'] or 0
+            cache_read = row['cache_read'] or 0
+            cache_creation = row['cache_creation'] or 0
+            usd = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000) + \
+                  (cache_read * 0.30 / 1_000_000) + (cache_creation * 3.75 / 1_000_000)
+
+            by_session.append({
+                "session_id": row['session_id'],
+                "project": row['project'],
+                "started_at": row['started_at'],
+                "input_tokens": int(input_tokens),
+                "output_tokens": int(output_tokens),
+                "estimated_usd": round(usd, 4)
+            })
+
+        conn.close()
+
+        return {
+            "today": today,
+            "this_week": week,
+            "all_time": all_time,
+            "by_session": by_session
+        }
+
+    except Exception as e:
+        return {
+            "error": str(e),
+            "today": {"estimated_usd": 0},
+            "this_week": {"estimated_usd": 0},
+            "all_time": {"estimated_usd": 0}
+        }

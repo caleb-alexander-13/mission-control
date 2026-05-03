@@ -1,10 +1,13 @@
 import os
+import sys
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
 
 from db_init import init_db
 from routes import agent, activity, cost, tasks, crons, agent_pipeline

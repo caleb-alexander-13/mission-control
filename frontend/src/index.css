@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+body {
+  @apply bg-gray-950 text-white;
+}
+
+.glass {
+  @apply bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl;
+}
+
+.glass-dark {
+  @apply bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl;
+}
