@@ -56,6 +56,9 @@ class FinanceAgent(BaseAgent):
 
     def _fetch_newsapi_business(self) -> List[Dict[str, Any]]:
         """Fetch business news from NewsAPI."""
+        if not self.newsapi_key:
+            return []
+
         url = "https://newsapi.org/v2/top-headlines"
         params = {
             "category": "business",

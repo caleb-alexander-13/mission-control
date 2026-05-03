@@ -71,24 +71,19 @@ def examine_findings_with_claude(findings: list) -> Dict[int, Dict[str, Any]]:
             for f in findings
         ], indent=2)
 
-        prompt = f"""You are an examination agent analyzing research findings. For each finding:
-1. Summarize its importance (2-3 sentences)
-2. Recommend a gameplan (specific action)
-3. Rate priority (critical/high/medium/low) based on importance_score
-4. Flag if this needs user approval (true for strategic decisions, false for routine updates like "update war room")
+        prompt = f"""Analyze these findings and respond with ONLY a valid JSON object. No markdown, no explanation, no extra text.
 
-Findings:
+For each finding, create an object with:
+- "analysis": importance summary
+- "gameplan": recommended action
+- "priority": critical/high/medium/low
+- "needs_approval": true if needs user approval, false if routine
+
+Findings JSON:
 {findings_json}
 
-Respond with ONLY valid JSON (no markdown, no explanation):
-{{
-  "finding_id": {{
-    "analysis": "...",
-    "gameplan": "...",
-    "priority": "high",
-    "needs_approval": false
-  }}
-}}"""
+Output format (replace finding_id with the actual ID):
+{{"finding_id": {{"analysis": "...", "gameplan": "...", "priority": "...", "needs_approval": ...}}}}"""
 
         response = client.messages.create(
             model="claude-opus-4-7",
@@ -100,12 +95,37 @@ Respond with ONLY valid JSON (no markdown, no explanation):
 
         # Parse JSON response
         text = response.content[0].text.strip()
+
+        # Remove markdown code blocks if present
+        if text.startswith("```"):
+            text = text[text.find('\n')+1:]
+        if text.endswith("```"):
+            text = text[:text.rfind('```')]
+
+        # Try to extract JSON if wrapped in markdown
+        if text.startswith('{') and text.endswith('}'):
+            # Already valid JSON format
+            pass
+        else:
+            # Try to find JSON within the response
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            if start != -1 and end > start:
+                text = text[start:end]
+
         result = json.loads(text)
+
+        # Convert string keys to integers (Claude returns JSON with string keys)
+        result = {int(k): v for k, v in result.items()}
 
         logger.info(f"Examined {len(result)} findings")
         return result
     except Exception as e:
         logger.error(f"Error examining findings: {e}")
+        try:
+            logger.debug(f"Claude response text: {text[:500]}")
+        except:
+            pass
         # Return empty dict if examination fails
         return {}
 
