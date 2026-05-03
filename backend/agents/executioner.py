@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from agents.base_agent import BaseAgent
-from agent_integrations import send_sms_alert, call_gm_seat_api
+from agent_integrations import call_gm_seat_api
 from utils.notifications import send_notification
 
 logger = logging.getLogger(__name__)
@@ -209,35 +209,27 @@ class ExecutionerAgent(BaseAgent):
             )
 
     def _send_alert(self, exam: Dict[str, Any]) -> None:
-        """Send SMS alert for approval-required action."""
+        """Send push alert (ntfy) for approval-required action."""
         try:
-            if not self.user_phone_number:
-                logger.warning("User phone number not configured, cannot send alert")
-                self._log_action(
-                    exam["id"],
-                    "alert_user",
-                    "Send SMS",
-                    "failed",
-                    "No user phone configured"
-                )
-                return
-
             finding = self._get_finding(exam["finding_id"])
 
-            success = send_sms_alert(
-                self.user_phone_number,
-                finding["finding_text"],
-                exam["gameplan"],
-                exam["priority"]
+            # Build alert message
+            msg = f"{exam['gameplan']}\n\nFinding: {finding['finding_text'][:150]}"
+
+            # Send notification via ntfy
+            success = send_notification(
+                msg,
+                title=f"[{finding['source_name'].upper()}] Action Required ({exam['priority'].upper()})",
+                tags="rotating_light"
             )
 
             if success:
                 self._log_action(
                     exam["id"],
                     "alert_user",
-                    "Send SMS",
+                    "Send Notification",
                     "pending",
-                    f"SMS sent to {self.user_phone_number}"
+                    f"Alert sent via ntfy"
                 )
                 logger.info(f"Sent alert for examination {exam['id']}")
             else:
@@ -245,16 +237,16 @@ class ExecutionerAgent(BaseAgent):
                 self._log_action(
                     exam["id"],
                     "alert_user",
-                    "Send SMS",
+                    "Send Notification",
                     "failed",
-                    "SMS failed to send"
+                    "Notification failed to send"
                 )
         except Exception as e:
             logger.error(f"Error sending alert: {e}", exc_info=True)
             self._log_action(
                 exam["id"],
                 "alert_user",
-                "Send SMS",
+                "Send Notification",
                 "failed",
                 str(e)
             )
