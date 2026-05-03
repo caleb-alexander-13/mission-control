@@ -238,7 +238,8 @@ export default function PixelOffice() {
       )
 
       // Finding text (truncate to fit)
-      const text = finding.finding_text.substring(0, 40) + (finding.finding_text.length > 40 ? '...' : '')
+      const text = (finding.finding_text || '').substring(0, 40) +
+                   (finding.finding_text?.length > 40 ? '...' : '')
       ctx.font = '10px Arial'
       ctx.fillStyle = canvasHelpers.Colors.text
       ctx.textAlign = 'center'
