@@ -124,19 +124,25 @@ export default function PixelOffice() {
 
     // Draw R&D agents with data
     AGENTS_RD.forEach(agent => {
-      const agentStatus = data.status?.agents?.[agent.name]
-      const finding = data.findings?.[agent.name]
+      const agentStatus = safeGetStatus(agent.name)
+      const finding = safeGetFinding(agent.name)
       drawRDAgentCard(ctx, agent, agentStatus, finding, animationState.time)
     })
 
     // Draw Examination agent
-    const examCount = data.examinations?.filter(e => e.status === 'pending_action').length || 0
+    const examCount = safeGetExamCount()
     drawExaminationAgent(ctx, examCount, animationState.time)
 
     // Draw Executioner agent
-    const actionCount = data.actions?.filter(a => a.result === 'pending').length || 0
+    const actionCount = safeGetActionCount()
     drawExecutionerAgent(ctx, actionCount, animationState.time)
   }, [data, animationState])
+
+  // Safe data getter functions
+  const safeGetFinding = (agent) => data.findings?.[agent] || null
+  const safeGetStatus = (agent) => data.status?.agents?.[agent] || { status: 'idle', findings_pending: 0 }
+  const safeGetExamCount = () => data.examinations?.filter(e => e.status === 'pending_action').length || 0
+  const safeGetActionCount = () => data.actions?.filter(a => a.result === 'pending').length || 0
 
   function drawOfficeLayout(ctx) {
     const { Colors } = canvasHelpers
@@ -195,6 +201,14 @@ export default function PixelOffice() {
       EXECUTIONER_AGENT.color,
       2
     )
+
+    // Show loading message if no data
+    if (!data.status || !Object.keys(data.findings).length) {
+      ctx.font = '14px Arial'
+      ctx.fillStyle = Colors.textMuted
+      ctx.textAlign = 'center'
+      ctx.fillText('Loading agent data...', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2)
+    }
   }
 
   function drawRDAgentCard(ctx, agent, agentStatus, finding, animationTime) {
