@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import * as canvasHelpers from './canvasHelpers'
+import * as pixelArtCharacters from './pixelArtCharacters'
 
 const API_BASE = 'http://localhost:8000/api'
 
@@ -90,6 +91,24 @@ export default function PixelOffice() {
     return () => clearInterval(interval)
   }, [])
 
+  // Animation loop
+  useEffect(() => {
+    let animationFrameId
+    const startTime = Date.now()
+
+    const animate = () => {
+      const elapsed = Date.now() - startTime
+      setAnimationState(prev => ({
+        ...prev,
+        time: elapsed
+      }))
+      animationFrameId = requestAnimationFrame(animate)
+    }
+
+    animationFrameId = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(animationFrameId)
+  }, [])
+
   // Canvas rendering
   useEffect(() => {
     if (!canvasRef.current) return
@@ -102,7 +121,12 @@ export default function PixelOffice() {
     // Draw static layout
     drawOfficeLayout(ctx)
 
-    // TODO: Draw agents and data in next tasks
+    // Draw R&D agents with data
+    AGENTS_RD.forEach(agent => {
+      const agentStatus = data.status?.agents?.[agent.name]
+      const finding = data.findings?.[agent.name]
+      drawRDAgentCard(ctx, agent, agentStatus, finding, animationState.time)
+    })
   }, [data, animationState])
 
   function drawOfficeLayout(ctx) {
@@ -161,6 +185,89 @@ export default function PixelOffice() {
       Colors.card,
       EXECUTIONER_AGENT.color,
       2
+    )
+  }
+
+  function drawRDAgentCard(ctx, agent, agentStatus, finding, animationTime) {
+    const cardX = agent.x
+    const cardY = agent.y
+    const centerX = cardX + AGENT_CARD_WIDTH / 2
+    const centerY = cardY + AGENT_CARD_HEIGHT / 2
+
+    // Draw character
+    pixelArtCharacters.drawRDAgentCharacter(ctx, agent.name, centerX - 30, cardY + 20)
+    pixelArtCharacters.drawHeldObject(ctx, agent.name, centerX - 30, cardY + 20)
+
+    // Draw importance score (if finding exists)
+    if (finding) {
+      const scoreColor = canvasHelpers.getImportanceColor(finding.importance_score)
+      canvasHelpers.drawText(
+        ctx,
+        `${finding.importance_score}/10`,
+        centerX,
+        cardY + 15,
+        'bold 14px Arial',
+        scoreColor
+      )
+
+      // Draw category badge
+      canvasHelpers.drawBadge(
+        ctx,
+        finding.category || 'unknown',
+        centerX,
+        cardY + AGENT_CARD_HEIGHT - 30,
+        '#4b5563',
+        '#e2e8f0'
+      )
+
+      // Draw finding text in speech bubble
+      const bubbleX = centerX
+      const bubbleY = cardY + AGENT_CARD_HEIGHT - 50
+      const bubbleW = AGENT_CARD_WIDTH - 20
+      const bubbleH = 35
+      canvasHelpers.drawRoundedRect(
+        ctx,
+        bubbleX - bubbleW / 2,
+        bubbleY - bubbleH / 2,
+        bubbleW,
+        bubbleH,
+        3,
+        '#1a1a2e',
+        agent.color,
+        1
+      )
+
+      // Finding text (truncate to fit)
+      const text = finding.finding_text.substring(0, 40) + (finding.finding_text.length > 40 ? '...' : '')
+      ctx.font = '10px Arial'
+      ctx.fillStyle = canvasHelpers.Colors.text
+      ctx.textAlign = 'center'
+      ctx.fillText(text, bubbleX, bubbleY + 2)
+    }
+
+    // Draw pending count
+    const pendingCount = agentStatus?.findings_pending || 0
+    const pendingColor = pendingCount > 0 ? '#fbbf24' : '#10b981'
+    canvasHelpers.drawText(
+      ctx,
+      `${pendingCount} pending`,
+      centerX,
+      cardY + AGENT_CARD_HEIGHT - 10,
+      '10px monospace',
+      pendingColor,
+      'center'
+    )
+
+    // Draw status indicator (pulse animation)
+    const isWorking = agentStatus?.status === 'working'
+    const pulseSize = isWorking ? 4 + Math.sin(animationTime / 200) * 1 : 3
+    const indicatorColor = isWorking ? '#fbbf24' : '#10b981'
+    canvasHelpers.drawCircle(
+      ctx,
+      centerX + 20,
+      cardY + 25,
+      pulseSize,
+      indicatorColor
     )
   }
 
