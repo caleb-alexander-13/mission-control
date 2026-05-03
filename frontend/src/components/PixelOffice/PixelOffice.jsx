@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as canvasHelpers from './canvasHelpers'
 import * as pixelArtCharacters from './pixelArtCharacters'
+import * as animationUtils from './animationUtils'
 
 const API_BASE = 'http://localhost:8000/api'
 
@@ -267,10 +268,12 @@ export default function PixelOffice() {
       'center'
     )
 
-    // Draw status indicator (pulse animation)
+    // Draw status indicator with breathing animation
     const isWorking = agentStatus?.status === 'working'
-    const pulseSize = isWorking ? 4 + Math.sin(animationTime / 200) * 1 : 3
+    const breathe = isWorking ? 0 : animationUtils.getIdleBreathePulse(animationTime)
+    const pulseSize = isWorking ? 5 + Math.sin(animationTime / 150) : 3 + breathe
     const indicatorColor = isWorking ? '#fbbf24' : '#10b981'
+
     canvasHelpers.drawCircle(
       ctx,
       centerX + 20,
