@@ -127,6 +127,14 @@ export default function PixelOffice() {
       const finding = data.findings?.[agent.name]
       drawRDAgentCard(ctx, agent, agentStatus, finding, animationState.time)
     })
+
+    // Draw Examination agent
+    const examCount = data.examinations?.filter(e => e.status === 'pending_action').length || 0
+    drawExaminationAgent(ctx, examCount, animationState.time)
+
+    // Draw Executioner agent
+    const actionCount = data.actions?.filter(a => a.result === 'pending').length || 0
+    drawExecutionerAgent(ctx, actionCount, animationState.time)
   }, [data, animationState])
 
   function drawOfficeLayout(ctx) {
@@ -270,6 +278,111 @@ export default function PixelOffice() {
       pulseSize,
       indicatorColor
     )
+  }
+
+  function drawExaminationAgent(ctx, examsCount, animationTime) {
+    const x = EXAMINATION_AGENT.x
+    const y = EXAMINATION_AGENT.y
+    const centerX = x + EXAMINATION_AGENT.width / 2
+
+    // Draw character
+    pixelArtCharacters.drawExaminationAgent(ctx, centerX - 30, y + 15)
+
+    // Draw status text
+    const isAnalyzing = examsCount > 0
+    const statusColor = isAnalyzing ? '#fbbf24' : '#10b981'
+    const statusText = isAnalyzing ? `Analyzing ${examsCount} findings...` : 'Idle'
+
+    canvasHelpers.drawText(
+      ctx,
+      statusText,
+      centerX + 40,
+      y + 30,
+      'bold 14px Arial',
+      statusColor
+    )
+
+    // Draw pending count (bold)
+    canvasHelpers.drawText(
+      ctx,
+      `${examsCount} pending examinations`,
+      centerX + 40,
+      y + 50,
+      '12px monospace',
+      canvasHelpers.Colors.text
+    )
+
+    // Draw animated papers stacking (visual queue metaphor)
+    const paperStackHeight = Math.min(examsCount * 2, 20) // max 20px
+    const paperY = y + 90 - paperStackHeight
+    for (let i = 0; i < Math.min(examsCount, 10); i++) {
+      const offset = (animationTime / 50 + i) % 3 // slow drift
+      canvasHelpers.drawRect(
+        ctx,
+        centerX - 15,
+        paperY + i * 2 + offset,
+        30,
+        1,
+        '#cbd5e1',
+        '#64748b',
+        0.5
+      )
+    }
+  }
+
+  function drawExecutionerAgent(ctx, actionsCount, animationTime) {
+    const x = EXECUTIONER_AGENT.x
+    const y = EXECUTIONER_AGENT.y
+    const centerX = x + EXECUTIONER_AGENT.width / 2
+
+    // Draw character
+    pixelArtCharacters.drawExecutionerAgent(ctx, centerX - 30, y + 15)
+
+    // Determine status
+    let statusText = 'Idle'
+    let statusColor = '#10b981'
+
+    if (actionsCount > 0) {
+      statusText = `${actionsCount} pending actions`
+      statusColor = '#fbbf24'
+    }
+
+    // Draw status text
+    canvasHelpers.drawText(
+      ctx,
+      statusText,
+      centerX + 40,
+      y + 30,
+      'bold 14px Arial',
+      statusColor
+    )
+
+    // Draw execution detail
+    const recentAction = data.actions?.[0]
+    if (recentAction) {
+      const resultColor = recentAction.result === 'success' ? '#10b981' :
+                         recentAction.result === 'pending' ? '#fbbf24' : '#ef4444'
+      canvasHelpers.drawText(
+        ctx,
+        `Last: ${recentAction.result}`,
+        centerX + 40,
+        y + 50,
+        '11px monospace',
+        resultColor
+      )
+    }
+
+    // Draw SMS indicator if awaiting approval
+    if (actionsCount > 0) {
+      canvasHelpers.drawText(
+        ctx,
+        '📱 awaiting approval',
+        centerX + 40,
+        y + 70,
+        '10px monospace',
+        '#60a5fa'
+      )
+    }
   }
 
   return (
