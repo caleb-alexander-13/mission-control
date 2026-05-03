@@ -51,50 +51,24 @@ export default function App() {
   const shownAlertsRef = useRef(new Set())
 
   useEffect(() => {
-    const fetchData = async () => {
+    // Fetch frequently-changing data (agent status, active examinations)
+    const fetchLiveData = async () => {
       try {
-        const [pipelineRes, findingsRes, examsRes, actionsRes, activitiesRes, costsRes] = await Promise.all([
+        const [pipelineRes, examsRes] = await Promise.all([
           fetch(`${API_BASE}/agent-pipeline/status`),
-          fetch(`${API_BASE}/agent-pipeline/findings?importance_min=6`),
           fetch(`${API_BASE}/agent-pipeline/examinations`),
-          fetch(`${API_BASE}/agent-pipeline/actions`),
-          fetch(`${API_BASE}/activity/feed`),
-          fetch(`${API_BASE}/cost/summary`),
         ])
 
         if (pipelineRes.ok) {
           const data = await pipelineRes.json()
           setPipelineStatus(data)
         }
-        if (findingsRes.ok) {
-          const data = await findingsRes.json()
-          const findingsArray = Array.isArray(data) ? data : data.items || []
-          const latestByAgent = {}
-          findingsArray.forEach(f => {
-            if (!latestByAgent[f.agent_name]) {
-              latestByAgent[f.agent_name] = f
-            }
-          })
-          setFindings(latestByAgent)
-        }
         if (examsRes.ok) {
           const data = await examsRes.json()
           setExaminations(Array.isArray(data) ? data : data.items || [])
         }
-        if (actionsRes.ok) {
-          const data = await actionsRes.json()
-          setPipelineActions(Array.isArray(data) ? data : data.items || [])
-        }
-        if (activitiesRes.ok) {
-          const data = await activitiesRes.json()
-          setActivities(data)
-        }
-        if (costsRes.ok) {
-          const data = await costsRes.json()
-          setCosts(data)
-        }
 
-        // Check cost thresholds
+        // Check cost thresholds with live data
         try {
           const alertRes = await fetch(`${API_BASE}/cost/alert-check`)
           if (alertRes.ok) {
@@ -109,13 +83,62 @@ export default function App() {
           }
         } catch (_) { /* alert check is best-effort */ }
       } catch (err) {
-        console.error('Fetch error:', err)
+        console.error('Fetch live data error:', err)
       }
     }
 
-    fetchData()
-    const interval = setInterval(fetchData, 5000)
-    return () => clearInterval(interval)
+    // Fetch less frequently-changing data (findings, actions, activities, costs)
+    const fetchStaticData = async () => {
+      try {
+        const [findingsRes, actionsRes, activitiesRes, costsRes] = await Promise.all([
+          fetch(`${API_BASE}/agent-pipeline/findings?importance_min=6`),
+          fetch(`${API_BASE}/agent-pipeline/actions`),
+          fetch(`${API_BASE}/activity/feed`),
+          fetch(`${API_BASE}/cost/summary`),
+        ])
+
+        if (findingsRes.ok) {
+          const data = await findingsRes.json()
+          const findingsArray = Array.isArray(data) ? data : data.items || []
+          const latestByAgent = {}
+          findingsArray.forEach(f => {
+            if (!latestByAgent[f.agent_name]) {
+              latestByAgent[f.agent_name] = f
+            }
+          })
+          setFindings(latestByAgent)
+        }
+        if (actionsRes.ok) {
+          const data = await actionsRes.json()
+          setPipelineActions(Array.isArray(data) ? data : data.items || [])
+        }
+        if (activitiesRes.ok) {
+          const data = await activitiesRes.json()
+          setActivities(data)
+        }
+        if (costsRes.ok) {
+          const data = await costsRes.json()
+          setCosts(data)
+        }
+      } catch (err) {
+        console.error('Fetch static data error:', err)
+      }
+    }
+
+    // Fetch immediately on mount
+    fetchLiveData()
+    fetchStaticData()
+
+    // Live data updates every 10 seconds (agent movement, status changes)
+    const liveInterval = setInterval(fetchLiveData, 10000)
+
+    // Static data updates every 30 seconds (findings, costs are slower to change)
+    const staticInterval = setInterval(fetchStaticData, 30000)
+
+    return () => {
+      clearInterval(liveInterval)
+      clearInterval(staticInterval)
+    }
   }, [])
 
   return (
