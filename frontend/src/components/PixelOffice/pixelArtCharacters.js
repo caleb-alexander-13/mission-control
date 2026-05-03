@@ -7,7 +7,10 @@ import { drawRect, Colors } from './canvasHelpers'
  * Characters have: head, body, arms, legs, held object
  */
 export function drawRDAgentCharacter(ctx, agent, x, y) {
-  const agentColor = Colors.agent[agent]
+  const agentColor = Colors.agent[agent] || Colors.agent.tech
+  if (!Colors.agent[agent]) {
+    console.warn(`Unknown agent type: ${agent}, using tech as fallback`)
+  }
 
   // Head with shading
   drawRect(ctx, x + 8, y + 2, 9, 8, '#fdbf69')    // main
@@ -60,6 +63,8 @@ export function drawHeldObject(ctx, agent, x, y) {
     case 'tech':
       drawGear(ctx, x + 20, y + 2)
       break
+    default:
+      console.warn(`Unknown agent type for held object: ${agent}`)
   }
 }
 
@@ -90,9 +95,6 @@ function drawGear(ctx, x, y) {
  * Draw Examination Agent (larger, at desk with papers)
  */
 export function drawExaminationAgent(ctx, x, y) {
-  const w = 60
-  const h = 80
-
   // Head
   drawRect(ctx, x + 15, y + 2, 9, 8, '#fdbf69')
   drawRect(ctx, x + 16, y + 3, 7, 6, '#f5a623')
@@ -119,15 +121,13 @@ export function drawExaminationAgent(ctx, x, y) {
   drawRect(ctx, x + 20, y + 27, 3, 1, '#000')
 
   // Desk
-  drawRect(ctx, x + 5, y + 30, w - 10, 3, '#8b6f47')
+  drawRect(ctx, x + 5, y + 30, 50, 3, '#8b6f47')
 }
 
 /**
  * Draw Executioner Agent (at desk, ready for action)
  */
 export function drawExecutionerAgent(ctx, x, y) {
-  const w = 60
-  const h = 80
 
   // Head
   drawRect(ctx, x + 15, y + 2, 9, 8, '#fdbf69')
@@ -155,7 +155,7 @@ export function drawExecutionerAgent(ctx, x, y) {
   drawRect(ctx, x + 20, y + 27, 3, 1, '#000')
 
   // Desk
-  drawRect(ctx, x + 5, y + 30, w - 10, 3, '#8b6f47')
+  drawRect(ctx, x + 5, y + 30, 50, 3, '#8b6f47')
 }
 
 // Helper to shade a color
