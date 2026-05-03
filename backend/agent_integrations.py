@@ -29,7 +29,7 @@ Respond with ONLY a number 1-10 and brief reasoning (2-3 words max).
 Format: "8 - High impact" """
 
         response = client.messages.create(
-            model="claude-opus-4-7",
+            model="claude-haiku-4-5-20251001",
             max_tokens=100,
             messages=[
                 {"role": "user", "content": prompt}
@@ -78,12 +78,14 @@ For each finding, create an object with:
 - "gameplan": recommended action
 - "priority": critical/high/medium/low
 - "needs_approval": true if needs user approval, false if routine
+- "trade_action" (ONLY for finance findings with category "trade_signal:*"): {{"ticker": "AAPL", "direction": "buy" or "sell", "confidence": 1-10}}
+  - Bullish/positive news = buy. Bearish/risk/downgrade news = sell. Omit for non-finance findings.
 
 Findings JSON:
 {findings_json}
 
 Output format (replace finding_id with the actual ID):
-{{"finding_id": {{"analysis": "...", "gameplan": "...", "priority": "...", "needs_approval": ...}}}}"""
+{{"finding_id": {{"analysis": "...", "gameplan": "...", "priority": "...", "needs_approval": ...}}, "finding_id": {{"analysis": "...", "gameplan": "...", "priority": "...", "needs_approval": ..., "trade_action": {{"ticker": "...", "direction": "...", "confidence": ...}}}}}}"""
 
         response = client.messages.create(
             model="claude-opus-4-7",
