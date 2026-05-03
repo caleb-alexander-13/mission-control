@@ -1,35 +1,202 @@
 # backend/agent_integrations.py
+import os
+import json
 import logging
-import random
-from typing import Optional
+import requests
+from typing import Dict, Any
+from anthropic import Anthropic
 
 logger = logging.getLogger(__name__)
 
+# Initialize Anthropic client
+client = Anthropic()
+
 def score_finding_with_claude(finding_text: str, agent_name: str) -> int:
     """
-    Score a finding 1-10 using Claude API.
-
-    Placeholder version - will be fully implemented with actual Claude API calls in next phase.
-    Currently returns a random score for MVP testing.
+    Use Claude to score a finding 1-10 based on business impact, urgency, cost.
+    Returns integer 1-10.
     """
-    # TODO: Integrate with Claude API for real scoring
-    # For now, return a random 1-10 score for testing
-    score = random.randint(1, 10)
-    logger.debug(f"[{agent_name}] Scored: '{finding_text[:50]}...' → {score}")
-    return score
+    try:
+        prompt = f"""You are a research agent evaluating business findings. Score this finding 1-10 based on:
+- Business impact: Will this affect decisions/strategy?
+- Urgency: How time-sensitive is this?
+- Cost: Does this affect revenue/spending?
 
-def send_sms_alert(phone_number: str, message: str) -> bool:
+Finding: {finding_text}
+Agent: {agent_name}
+
+Respond with ONLY a number 1-10 and brief reasoning (2-3 words max).
+Format: "8 - High impact" """
+
+        response = client.messages.create(
+            model="claude-opus-4-7",
+            max_tokens=100,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        # Parse response - extract first number
+        text = response.content[0].text.strip()
+        score = int(text.split()[0])
+
+        # Clamp to 1-10
+        score = max(1, min(10, score))
+        logger.info(f"Scored finding: {score}/10")
+        return score
+    except Exception as e:
+        logger.error(f"Error scoring finding: {e}")
+        # Default to 5 if scoring fails
+        return 5
+
+def examine_findings_with_claude(findings: list) -> Dict[int, Dict[str, Any]]:
+    """
+    Use Claude to examine multiple findings and create gameplans.
+
+    Args:
+        findings: List of dicts with id, finding_text, importance_score, category
+
+    Returns:
+        Dict mapping finding_id to {analysis, gameplan, priority, needs_approval}
+    """
+    try:
+        # Format findings for Claude
+        findings_json = json.dumps([
+            {
+                'id': f.get('id'),
+                'finding': f.get('finding_text'),
+                'importance': f.get('importance_score'),
+                'category': f.get('category')
+            }
+            for f in findings
+        ], indent=2)
+
+        prompt = f"""You are an examination agent analyzing research findings. For each finding:
+1. Summarize its importance (2-3 sentences)
+2. Recommend a gameplan (specific action)
+3. Rate priority (critical/high/medium/low) based on importance_score
+4. Flag if this needs user approval (true for strategic decisions, false for routine updates like "update war room")
+
+Findings:
+{findings_json}
+
+Respond with ONLY valid JSON (no markdown, no explanation):
+{{
+  "finding_id": {{
+    "analysis": "...",
+    "gameplan": "...",
+    "priority": "high",
+    "needs_approval": false
+  }}
+}}"""
+
+        response = client.messages.create(
+            model="claude-opus-4-7",
+            max_tokens=2000,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        # Parse JSON response
+        text = response.content[0].text.strip()
+        result = json.loads(text)
+
+        logger.info(f"Examined {len(result)} findings")
+        return result
+    except Exception as e:
+        logger.error(f"Error examining findings: {e}")
+        # Return empty dict if examination fails
+        return {}
+
+def send_sms_alert(phone_number: str, finding_text: str, gameplan: str, priority: str) -> bool:
     """
     Send SMS alert via Twilio.
-    Placeholder for MVP - will be fully implemented later.
-    """
-    logger.info(f"[SMS] Would send to {phone_number}: {message[:50]}...")
-    return True
 
-def update_war_room_via_gm_seat(finding: str, category: str, importance: int, source: str) -> bool:
+    Args:
+        phone_number: User's phone number (E.164 format)
+        finding_text: What was found
+        gameplan: Recommended action
+        priority: critical/high/medium/low
+
+    Returns:
+        True if sent successfully, False otherwise
     """
-    Call GM Seat API to update War Room.
-    Will be fully implemented after GM Seat API is tested.
+    try:
+        twilio_sid = os.getenv('TWILIO_ACCOUNT_SID')
+        twilio_token = os.getenv('TWILIO_AUTH_TOKEN')
+        twilio_from = os.getenv('TWILIO_PHONE_NUMBER')
+
+        if not all([twilio_sid, twilio_token, twilio_from]):
+            logger.warning("Twilio credentials not configured")
+            return False
+
+        # Construct message
+        message = f"""ALERT ({priority.upper()}): {finding_text[:100]}
+
+Gameplan: {gameplan[:150]}
+
+Reply: YES to approve / NO to skip"""
+
+        # Send via Twilio API
+        auth = (twilio_sid, twilio_token)
+        data = {
+            'From': twilio_from,
+            'To': phone_number,
+            'Body': message
+        }
+
+        response = requests.post(
+            f'https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json',
+            data=data,
+            auth=auth,
+            timeout=10
+        )
+
+        if response.status_code in [200, 201]:
+            logger.info(f"SMS sent successfully to {phone_number}")
+            return True
+        else:
+            logger.error(f"Twilio error: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        logger.error(f"Error sending SMS: {e}")
+        return False
+
+def call_gm_seat_api(finding: Dict[str, Any]) -> Dict[str, Any]:
     """
-    logger.info(f"[War Room] Would update with: {finding[:50]}... (importance: {importance})")
-    return True
+    Call GM Seat API to update NFL War Room with finding.
+
+    Args:
+        finding: Dict with finding_text, category, importance_score, source_name
+
+    Returns:
+        API response dict
+    """
+    try:
+        gm_seat_url = os.getenv('GM_SEAT_API_URL', 'http://localhost:8000/api/war-room/update')
+
+        payload = {
+            'finding': finding['finding_text'],
+            'category': finding['category'],
+            'importance': finding['importance_score'],
+            'source': finding['source_name'],
+            'recommended_action': finding.get('gameplan', 'Review and assess impact'),
+            'timestamp': int(__import__('time').time() * 1000)
+        }
+
+        response = requests.post(
+            gm_seat_url,
+            json=payload,
+            timeout=10
+        )
+
+        if response.status_code == 200:
+            logger.info(f"GM Seat API updated successfully")
+            return response.json()
+        else:
+            logger.error(f"GM Seat API error: {response.status_code} - {response.text}")
+            return {'status': 'error', 'message': 'Failed to update war room'}
+    except Exception as e:
+        logger.error(f"Error calling GM Seat API: {e}")
+        return {'status': 'error', 'message': str(e)}
