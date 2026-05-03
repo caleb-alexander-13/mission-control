@@ -1,0 +1,291 @@
+from fastapi import APIRouter, HTTPException, Query
+from datetime import datetime, timedelta
+import sqlite3
+from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+DB_PATH = Path.home() / 'Desktop' / 'mission-control' / 'backend' / 'mission_control.db'
+
+def get_db():
+    """Get database connection."""
+    conn = sqlite3.connect(str(DB_PATH), timeout=5)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+@router.get("/agent-pipeline/findings")
+async def get_findings(
+    status: str = Query(None, description="Filter by status: pending_examination or examined"),
+    agent: str = Query(None, description="Filter by agent name"),
+    importance_min: int = Query(None, description="Minimum importance score")
+):
+    """Get all research findings with optional filtering."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        query = "SELECT id, agent_name, finding_text, source_name, importance_score, category, status, created_at FROM research_findings WHERE 1=1"
+        params = []
+
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if agent:
+            query += " AND agent_name = ?"
+            params.append(agent)
+        if importance_min is not None:
+            query += " AND importance_score >= ?"
+            params.append(importance_min)
+
+        query += " ORDER BY created_at DESC LIMIT 100"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        findings = [
+            {
+                "id": row[0],
+                "agent_name": row[1],
+                "finding_text": row[2],
+                "source_name": row[3],
+                "importance_score": row[4],
+                "category": row[5],
+                "status": row[6],
+                "created_at": row[7]
+            }
+            for row in rows
+        ]
+
+        conn.close()
+        return findings
+    except Exception as e:
+        logger.error(f"Error fetching findings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/agent-pipeline/examinations")
+async def get_examinations():
+    """Get pending examinations."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT e.id, e.finding_id, rf.finding_text, e.claude_analysis,
+                   e.gameplan, e.priority, e.requires_approval, e.status, e.created_at
+            FROM examinations e
+            JOIN research_findings rf ON e.finding_id = rf.id
+            WHERE e.status = 'pending_action'
+            ORDER BY e.created_at ASC
+        """)
+
+        rows = cursor.fetchall()
+        examinations = [
+            {
+                "id": row[0],
+                "finding_id": row[1],
+                "finding_text": row[2],
+                "claude_analysis": row[3],
+                "gameplan": row[4],
+                "priority": row[5],
+                "requires_approval": bool(row[6]),
+                "status": row[7],
+                "created_at": row[8]
+            }
+            for row in rows
+        ]
+
+        conn.close()
+        return examinations
+    except Exception as e:
+        logger.error(f"Error fetching examinations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/agent-pipeline/actions")
+async def get_actions():
+    """Get recent actions (last 24 hours)."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        now = int(datetime.now().timestamp() * 1000)
+        yesterday = now - (24 * 60 * 60 * 1000)
+
+        cursor.execute("""
+            SELECT id, examination_id, action_type, action_description, result, created_at, executed_at
+            FROM actions
+            WHERE created_at >= ?
+            ORDER BY created_at DESC
+            LIMIT 50
+        """, (yesterday,))
+
+        rows = cursor.fetchall()
+        actions = [
+            {
+                "id": row[0],
+                "examination_id": row[1],
+                "action_type": row[2],
+                "action_description": row[3],
+                "result": row[4],
+                "created_at": row[5],
+                "executed_at": row[6]
+            }
+            for row in rows
+        ]
+
+        conn.close()
+        return actions
+    except Exception as e:
+        logger.error(f"Error fetching actions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/agent-pipeline/status")
+async def get_status():
+    """Get agent status and last activity."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        agents = ["sports", "finance", "creative", "tech"]
+        agent_status = {}
+
+        for agent in agents:
+            # Get status and last finding
+            cursor.execute("""
+                SELECT COUNT(*) as total,
+                       SUM(CASE WHEN status='pending_examination' THEN 1 ELSE 0 END) as pending,
+                       MAX(created_at) as last_finding
+                FROM research_findings
+                WHERE agent_name = ?
+            """, (agent,))
+
+            row = cursor.fetchone()
+            agent_status[agent] = {
+                "status": "idle" if not row[2] else "working",
+                "findings_total": row[0] or 0,
+                "findings_pending": row[1] or 0,
+                "last_activity": row[2] or None
+            }
+
+        # Examination agent status
+        cursor.execute("SELECT COUNT(*) FROM examinations WHERE status='pending_action'")
+        pending_exams = cursor.fetchone()[0]
+        agent_status["examination"] = {
+            "status": "idle" if pending_exams == 0 else "analyzing",
+            "pending_examinations": pending_exams
+        }
+
+        # Executioner agent status
+        cursor.execute("SELECT COUNT(*) FROM actions WHERE result='pending'")
+        pending_actions = cursor.fetchone()[0]
+        agent_status["executioner"] = {
+            "status": "idle" if pending_actions == 0 else "executing",
+            "pending_actions": pending_actions
+        }
+
+        conn.close()
+        return {
+            "agents": agent_status,
+            "timestamp": int(datetime.now().timestamp() * 1000)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/agent-pipeline/cost-summary")
+async def get_cost_summary():
+    """Get cost summary (tokens, SMS, API calls)."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Get token usage totals
+        cursor.execute("""
+            SELECT
+                SUM(input_tokens) as total_input,
+                SUM(output_tokens) as total_output,
+                SUM(cache_read_tokens) as total_cache_read,
+                SUM(cache_creation_tokens) as total_cache_creation
+            FROM token_usage
+        """)
+
+        tokens = cursor.fetchone()
+
+        # Calculate cost (using Claude 3.5 Sonnet pricing as example)
+        # Input: $3 per MTok, Output: $15 per MTok, Cache read: $0.30 per MTok, Cache creation: $3.75 per MTok
+        input_tokens = tokens[0] or 0
+        output_tokens = tokens[1] or 0
+        cache_read = tokens[2] or 0
+        cache_creation = tokens[3] or 0
+
+        input_cost = (input_tokens / 1_000_000) * 3.00
+        output_cost = (output_tokens / 1_000_000) * 15.00
+        cache_read_cost = (cache_read / 1_000_000) * 0.30
+        cache_creation_cost = (cache_creation / 1_000_000) * 3.75
+
+        total_cost = input_cost + output_cost + cache_read_cost + cache_creation_cost
+
+        conn.close()
+
+        return {
+            "total_cost": round(total_cost, 4),
+            "tokens_used": {
+                "input": input_tokens,
+                "output": output_tokens,
+                "cache_read": cache_read,
+                "cache_creation": cache_creation
+            },
+            "cost_breakdown": {
+                "input_cost": round(input_cost, 4),
+                "output_cost": round(output_cost, 4),
+                "cache_read_cost": round(cache_read_cost, 4),
+                "cache_creation_cost": round(cache_creation_cost, 4)
+            },
+            "sms_sent": 0,
+            "api_calls": {
+                "newsapi": 0,
+                "github": 0,
+                "hackernews": 0,
+                "yahoo_finance": 0,
+                "gm_seat": 0
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching cost summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/agent-pipeline/approve-action")
+async def approve_action(data: dict):
+    """Approve or reject a pending examination action."""
+    try:
+        examination_id = data.get("examination_id")
+        approved = data.get("approved", False)
+
+        if not examination_id:
+            raise HTTPException(status_code=400, detail="examination_id required")
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Update examination status
+        new_status = "executed" if approved else "archived"
+        cursor.execute("""
+            UPDATE examinations
+            SET status = ?
+            WHERE id = ?
+        """, (new_status, examination_id))
+
+        conn.commit()
+        conn.close()
+
+        return {
+            "status": "success",
+            "message": f"Action {'approved' if approved else 'rejected'}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving action: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
