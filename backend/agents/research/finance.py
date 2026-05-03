@@ -9,7 +9,7 @@ import requests
 from typing import List, Dict, Any
 
 from agents.base_agent import BaseAgent
-from agent_integrations import score_finding_with_claude
+from agent_integrations import score_finding_with_claude, batch_score_findings_with_claude
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +35,8 @@ class FinanceAgent(BaseAgent):
         while self.running:
             try:
                 findings = self._fetch_findings()
-                for finding in findings:
-                    self._process_finding(finding)
+                if findings:
+                    self._process_findings_batch(findings)
             except Exception as e:
                 logger.error(f"Error in finance agent: {e}", exc_info=True)
 
@@ -111,8 +111,37 @@ class FinanceAgent(BaseAgent):
                 return m
         return None
 
+    def _process_findings_batch(self, findings: List[Dict[str, Any]]) -> None:
+        """Score and store multiple findings in batch."""
+        if not findings:
+            return
+
+        try:
+            # Score all findings in a single batch call
+            batch_to_score = [{"text": f["text"]} for f in findings]
+            scores = batch_score_findings_with_claude(batch_to_score, "finance")
+
+            # Process each finding with its score
+            for finding in findings:
+                score = scores.get(finding["text"], 5)
+                category = self._categorize(finding["text"])
+                ticker = self._extract_ticker(finding["text"])
+
+                if ticker and score >= 6:
+                    category = f"trade_signal:{ticker}"
+
+                self._insert_research_finding(
+                    finding_text=finding["text"][:500],
+                    source_url=finding.get("source_url"),
+                    source_name=finding.get("source_name"),
+                    importance_score=score,
+                    category=category
+                )
+        except Exception as e:
+            logger.error(f"Error processing findings batch: {e}")
+
     def _process_finding(self, finding: Dict[str, Any]) -> None:
-        """Score and store a finding."""
+        """Score and store a single finding (fallback for single-finding processing)."""
         try:
             score = score_finding_with_claude(finding["text"], "finance")
             category = self._categorize(finding["text"])

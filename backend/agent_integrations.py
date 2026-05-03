@@ -39,6 +39,77 @@ def _log_token_usage(model: str, input_tokens: int, output_tokens: int, cache_re
     except Exception as e:
         logger.debug(f"Failed to log token usage: {e}")
 
+def batch_score_findings_with_claude(findings: list, agent_name: str) -> Dict[str, int]:
+    """
+    Score multiple findings in a single Claude API call.
+
+    Args:
+        findings: List of dicts with 'text' and optionally 'id' keys
+        agent_name: Name of the agent making the request
+
+    Returns:
+        Dict mapping finding text to score (1-10)
+    """
+    try:
+        if not findings:
+            return {}
+
+        # Format findings for Claude
+        findings_text = "\n\n".join([f"{i+1}. {f.get('text', '')}" for i, f in enumerate(findings)])
+
+        prompt = f"""You are a research agent evaluating business findings. Score each finding 1-10 based on:
+- Business impact: Will this affect decisions/strategy?
+- Urgency: How time-sensitive is this?
+- Cost: Does this affect revenue/spending?
+
+Findings to score:
+{findings_text}
+
+Agent: {agent_name}
+
+Respond with ONLY a JSON object mapping finding number to score (no markdown, no explanation):
+{{"1": 8, "2": 5, "3": 9}}"""
+
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        # Log token usage
+        _log_token_usage(
+            model="claude-haiku-4-5-20251001",
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            cache_read_tokens=getattr(response.usage, 'cache_read_input_tokens', 0),
+            cache_creation_tokens=getattr(response.usage, 'cache_creation_input_tokens', 0)
+        )
+
+        # Parse response
+        text = response.content[0].text.strip()
+        if text.startswith("```"):
+            text = text[text.find('\n')+1:text.rfind('```')]
+
+        scores_dict = json.loads(text)
+
+        # Map back to findings text with clamping
+        result = {}
+        for i, finding in enumerate(findings):
+            key = str(i + 1)
+            score = scores_dict.get(key, 5)
+            score = max(1, min(10, int(score)))
+            result[finding.get('text', '')] = score
+
+        logger.info(f"Batch scored {len(result)} findings")
+        return result
+    except Exception as e:
+        logger.error(f"Error batch scoring findings: {e}")
+        # Return neutral scores on failure
+        return {f.get('text', ''): 5 for f in findings}
+
+
 def score_finding_with_claude(finding_text: str, agent_name: str) -> int:
     """
     Use Claude to score a finding 1-10 based on business impact, urgency, cost.
@@ -128,7 +199,16 @@ Output format (replace finding_id with the actual ID):
             model="claude-opus-4-7",
             max_tokens=2000,
             messages=[
-                {"role": "user", "content": prompt}
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt,
+                            "cache_control": {"type": "ephemeral"}
+                        }
+                    ]
+                }
             ]
         )
 
@@ -154,13 +234,20 @@ Output format (replace finding_id with the actual ID):
 
         result = json.loads(text)
 
-        # Log token usage
+        # Log token usage (Anthropic API returns cache tokens with different field names)
+        cache_read = 0
+        cache_creation = 0
+        if hasattr(response.usage, 'cache_read_input_tokens'):
+            cache_read = response.usage.cache_read_input_tokens
+        if hasattr(response.usage, 'cache_creation_input_tokens'):
+            cache_creation = response.usage.cache_creation_input_tokens
+
         _log_token_usage(
             model="claude-opus-4-7",
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
-            cache_read_tokens=getattr(response.usage, 'cache_read_input_tokens', 0),
-            cache_creation_tokens=getattr(response.usage, 'cache_creation_input_tokens', 0)
+            cache_read_tokens=cache_read,
+            cache_creation_tokens=cache_creation
         )
 
         # Convert string keys to integers (Claude returns JSON with string keys)
