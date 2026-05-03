@@ -5,6 +5,7 @@ import CostTracker from './components/CostTracker'
 import TaskWorkshop from './components/TaskWorkshop'
 import CronViewer from './components/CronViewer'
 import AgentPipeline from './components/AgentPipeline/AgentPipeline'
+import PixelOffice from './components/PixelOffice/PixelOffice'
 
 const API_BASE = 'http://localhost:8000/api'
 
@@ -80,6 +81,10 @@ export default function App() {
 
         <div className="mt-6">
           <TaskWorkshop data={tasks} />
+        </div>
+
+        <div className="mt-6">
+          <PixelOffice />
         </div>
 
         <div className="mt-6">
