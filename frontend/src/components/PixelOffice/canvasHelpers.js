@@ -83,7 +83,6 @@ export function drawText(ctx, text, x, y, font = '12px Arial', color = Colors.te
 
 export function drawBadge(ctx, text, x, y, bgColor, textColor = '#000', padding = 4) {
   ctx.font = '10px monospace'
-  ctx.fillStyle = '#000'
   const metrics = ctx.measureText(text)
   const width = metrics.width + padding * 2
   const height = 14 + padding * 2
