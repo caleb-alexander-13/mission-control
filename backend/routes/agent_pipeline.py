@@ -16,6 +16,101 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+@router.get("/agent-pipeline/findings-with-feedback")
+async def get_findings_with_feedback(
+    agent: str = Query(None, description="Filter by agent name"),
+    limit: int = Query(50, description="Number of findings to return")
+):
+    """Get findings with user feedback status."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        query = """
+            SELECT rf.id, rf.agent_name, rf.finding_text, rf.source_name,
+                   rf.importance_score, rf.category, rf.created_at,
+                   ff.feedback, ff.notes
+            FROM research_findings rf
+            LEFT JOIN finding_feedback ff ON rf.id = ff.finding_id
+            WHERE 1=1
+        """
+        params = []
+
+        if agent:
+            query += " AND rf.agent_name = ?"
+            params.append(agent)
+
+        query += " ORDER BY rf.created_at DESC LIMIT ?"
+        params.append(limit)
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        findings = [
+            {
+                "id": row[0],
+                "agent_name": row[1],
+                "finding_text": row[2],
+                "source_name": row[3],
+                "importance_score": row[4],
+                "category": row[5],
+                "created_at": row[6],
+                "feedback": row[7],
+                "notes": row[8]
+            }
+            for row in rows
+        ]
+
+        conn.close()
+        return findings
+    except Exception as e:
+        logger.error(f"Error fetching findings with feedback: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/agent-pipeline/findings/{finding_id}/feedback")
+async def submit_finding_feedback(finding_id: int, data: dict):
+    """Submit feedback on a finding (important/not important)."""
+    try:
+        import time
+
+        feedback = data.get("feedback")  # "important" or "not_important"
+        notes = data.get("notes", "")
+
+        if feedback not in ["important", "not_important"]:
+            raise HTTPException(status_code=400, detail="feedback must be 'important' or 'not_important'")
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Check if finding exists
+        cursor.execute("SELECT id FROM research_findings WHERE id = ?", (finding_id,))
+        if not cursor.fetchone():
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"Finding {finding_id} not found")
+
+        # Delete existing feedback and add new
+        cursor.execute("DELETE FROM finding_feedback WHERE finding_id = ?", (finding_id,))
+
+        now = int(time.time() * 1000)
+        cursor.execute("""
+            INSERT INTO finding_feedback (finding_id, feedback, notes, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (finding_id, feedback, notes, now))
+
+        conn.commit()
+        conn.close()
+
+        logger.info(f"Recorded feedback for finding {finding_id}: {feedback}")
+        return {
+            "status": "success",
+            "message": f"Feedback recorded: {feedback}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error submitting feedback for finding {finding_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/agent-pipeline/findings")
 async def get_findings(
     status: str = Query(None, description="Filter by status: pending_examination or examined"),

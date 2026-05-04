@@ -206,6 +206,19 @@ def init_db():
     ''')
     cursor.execute('INSERT OR IGNORE INTO paper_cash (id, balance) VALUES (1, 5000.0)')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS finding_feedback (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            finding_id        INTEGER NOT NULL,
+            feedback          TEXT NOT NULL,
+            notes             TEXT,
+            created_at        INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+
+            FOREIGN KEY (finding_id) REFERENCES research_findings(id)
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_finding_feedback ON finding_feedback(finding_id)')
+
     conn.commit()
     conn.close()
 

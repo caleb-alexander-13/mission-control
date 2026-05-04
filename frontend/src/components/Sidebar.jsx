@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const TABS = [
   { id: 'agents', icon: '◉', label: 'Agents' },
@@ -18,6 +18,56 @@ const AGENT_COLORS = {
 
 export default function Sidebar({ collapsed, onToggle, pipelineStatus, findings, examinations, pipelineActions, activities, costs, portfolio, tradingLog }) {
   const [activeTab, setActiveTab] = useState('agents')
+  const [expandedAgent, setExpandedAgent] = useState(null)
+  const [findingsLog, setFindingsLog] = useState({})
+  const [feedbackLoading, setFeedbackLoading] = useState({})
+
+  const API_BASE = 'http://localhost:8000/api'
+
+  useEffect(() => {
+    // Fetch findings log for all agents
+    const fetchFindingsLog = async () => {
+      const agents = ['sports', 'finance', 'creative', 'tech']
+      const logs = {}
+      for (const agent of agents) {
+        try {
+          const res = await fetch(`${API_BASE}/agent-pipeline/findings-with-feedback?agent=${agent}&limit=10`)
+          if (res.ok) {
+            logs[agent] = await res.json()
+          }
+        } catch (err) {
+          console.error(`Error fetching findings for ${agent}:`, err)
+        }
+      }
+      setFindingsLog(logs)
+    }
+    if (activeTab === 'agents') {
+      fetchFindingsLog()
+    }
+  }, [activeTab])
+
+  const submitFeedback = async (findingId, feedback) => {
+    setFeedbackLoading({ ...feedbackLoading, [findingId]: true })
+    try {
+      const res = await fetch(`${API_BASE}/agent-pipeline/findings/${findingId}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback })
+      })
+      if (res.ok) {
+        // Update local state
+        Object.keys(findingsLog).forEach(agent => {
+          findingsLog[agent] = findingsLog[agent].map(f =>
+            f.id === findingId ? { ...f, feedback } : f
+          )
+        })
+        setFindingsLog({ ...findingsLog })
+      }
+    } catch (err) {
+      console.error('Error submitting feedback:', err)
+    }
+    setFeedbackLoading({ ...feedbackLoading, [findingId]: false })
+  }
 
   return (
     <aside
@@ -56,30 +106,69 @@ export default function Sidebar({ collapsed, onToggle, pipelineStatus, findings,
             {Object.entries(pipelineStatus?.agents || {}).map(([name, info]) => {
               const isWorking = info.status === 'working' || info.status === 'analyzing' || info.status === 'executing'
               const pending = info.findings_pending ?? info.pending_examinations ?? info.pending_actions ?? 0
-              const latestFinding = findings[name]
+              const isExpanded = expandedAgent === name
+              const agentFindings = findingsLog[name] || []
+
               return (
                 <div key={name} className="border-b border-white/5">
-                  <div className="flex items-center gap-2 px-3 py-2 hover:bg-white/5">
+                  <button
+                    onClick={() => setExpandedAgent(isExpanded ? null : name)}
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-white/5 text-left"
+                  >
                     <div
                       className="w-2 h-2 rounded-full shrink-0"
                       style={{ backgroundColor: isWorking ? '#fbbf24' : '#10b981' }}
                     />
-                    <span className="text-xs capitalize flex-1 truncate font-semibold">{name}</span>
+                    <span className="text-xs capitalize flex-1 font-semibold">{name}</span>
                     {pending > 0 && <span className="text-xs text-gray-500 font-semibold">{pending}</span>}
-                  </div>
-                  {latestFinding && (
-                    <div className="px-3 py-2 bg-white/5 border-t border-white/5">
-                      <div className="text-xs text-gray-300 mb-1 line-clamp-2">
-                        {latestFinding.finding_text}
-                      </div>
-                      {latestFinding.source_name && (
-                        <div className="text-xs text-gray-500">
-                          📌 {latestFinding.source_name}
-                        </div>
-                      )}
-                      {latestFinding.importance_score && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          ⭐ Score: {latestFinding.importance_score}/10
+                    <span className="text-xs text-gray-600">{isExpanded ? '▼' : '▶'}</span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="bg-white/5 border-t border-white/5 max-h-64 overflow-y-auto">
+                      {agentFindings.length > 0 ? (
+                        agentFindings.map((finding) => (
+                          <div key={finding.id} className="px-3 py-2 border-b border-white/5 text-xs">
+                            <div className="text-gray-300 mb-1 line-clamp-2">
+                              {finding.finding_text}
+                            </div>
+                            <div className="text-gray-500 text-xs mb-2">
+                              📌 {finding.source_name}
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              <button
+                                onClick={() => submitFeedback(finding.id, 'important')}
+                                disabled={feedbackLoading[finding.id]}
+                                className={`px-2 py-1 rounded text-xs ${
+                                  finding.feedback === 'important'
+                                    ? 'bg-green-600 text-white'
+                                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                                }`}
+                              >
+                                👍 Good
+                              </button>
+                              <button
+                                onClick={() => submitFeedback(finding.id, 'not_important')}
+                                disabled={feedbackLoading[finding.id]}
+                                className={`px-2 py-1 rounded text-xs ${
+                                  finding.feedback === 'not_important'
+                                    ? 'bg-red-600 text-white'
+                                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                                }`}
+                              >
+                                👎 Meh
+                              </button>
+                              {finding.feedback && (
+                                <span className="text-xs text-gray-600 ml-auto">
+                                  {finding.feedback === 'important' ? '✓' : '✗'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-xs text-gray-500">
+                          No findings yet
                         </div>
                       )}
                     </div>
