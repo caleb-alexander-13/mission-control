@@ -389,3 +389,159 @@ async def deny_examination(exam_id: int):
     except Exception as e:
         logger.error(f"Error denying examination {exam_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/agent-pipeline/examinations/{exam_id}/conversation")
+async def get_conversation(exam_id: int):
+    """Get conversation history for an examination."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Get examination details
+        cursor.execute("""
+            SELECT e.id, e.finding_id, rf.finding_text, e.claude_analysis, e.gameplan, e.priority
+            FROM examinations e
+            JOIN research_findings rf ON e.finding_id = rf.id
+            WHERE e.id = ?
+        """, (exam_id,))
+
+        exam = cursor.fetchone()
+        if not exam:
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"Examination {exam_id} not found")
+
+        # Get conversation history
+        cursor.execute("""
+            SELECT role, message, created_at FROM examination_conversations
+            WHERE examination_id = ?
+            ORDER BY created_at ASC
+        """, (exam_id,))
+
+        messages = cursor.fetchall()
+        conversation = [
+            {
+                "role": msg[0],
+                "message": msg[1],
+                "timestamp": msg[2]
+            }
+            for msg in messages
+        ]
+
+        conn.close()
+
+        return {
+            "examination_id": exam[0],
+            "finding_id": exam[1],
+            "finding_text": exam[2],
+            "analysis": exam[3],
+            "gameplan": exam[4],
+            "priority": exam[5],
+            "conversation": conversation
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching conversation for exam {exam_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/agent-pipeline/examinations/{exam_id}/ask")
+async def ask_agent(exam_id: int, data: dict):
+    """Ask the agent a follow-up question about the examination."""
+    try:
+        import time
+        from anthropic import Anthropic
+
+        question = data.get("question")
+        if not question:
+            raise HTTPException(status_code=400, detail="question required")
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Get examination details
+        cursor.execute("""
+            SELECT e.id, e.finding_id, rf.finding_text, rf.agent_name, e.claude_analysis, e.gameplan, e.priority
+            FROM examinations e
+            JOIN research_findings rf ON e.finding_id = rf.id
+            WHERE e.id = ?
+        """, (exam_id,))
+
+        exam = cursor.fetchone()
+        if not exam:
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"Examination {exam_id} not found")
+
+        # Get conversation history
+        cursor.execute("""
+            SELECT role, message FROM examination_conversations
+            WHERE examination_id = ?
+            ORDER BY created_at ASC
+        """, (exam_id,))
+
+        history = cursor.fetchall()
+
+        # Store user question
+        now = int(time.time() * 1000)
+        cursor.execute("""
+            INSERT INTO examination_conversations (examination_id, role, message, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (exam_id, "user", question, now))
+        conn.commit()
+
+        # Build conversation context
+        conv_text = "\n".join([f"{msg[0].upper()}: {msg[1]}" for msg in history])
+        if conv_text:
+            conv_text += f"\nUSER: {question}"
+        else:
+            conv_text = f"USER: {question}"
+
+        # Call Claude for follow-up analysis
+        client = Anthropic()
+        prompt = f"""You are a research agent ({exam[3]}) who made an initial finding and analysis.
+
+ORIGINAL FINDING:
+{exam[2]}
+
+YOUR INITIAL ANALYSIS:
+{exam[4]}
+
+YOUR GAMEPLAN:
+{exam[5]}
+
+CONVERSATION SO FAR:
+{conv_text}
+
+Provide a detailed response to the user's follow-up question. Be specific and substantiate your reasoning with facts and logic. Consider trade-offs and alternatives if relevant."""
+
+        response = client.messages.create(
+            model="claude-opus-4-7",
+            max_tokens=1000,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        agent_response = response.content[0].text
+
+        # Store agent response
+        now = int(time.time() * 1000)
+        cursor.execute("""
+            INSERT INTO examination_conversations (examination_id, role, message, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (exam_id, "agent", agent_response, now))
+        conn.commit()
+        conn.close()
+
+        logger.info(f"Agent responded to question on examination {exam_id}")
+
+        return {
+            "examination_id": exam_id,
+            "question": question,
+            "response": agent_response,
+            "timestamp": now
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error asking agent about exam {exam_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

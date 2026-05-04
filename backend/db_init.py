@@ -142,6 +142,19 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_actions_examination ON actions(examination_id)')
 
     cursor.execute('''
+        CREATE TABLE IF NOT EXISTS examination_conversations (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            examination_id    INTEGER NOT NULL,
+            role              TEXT NOT NULL,
+            message           TEXT NOT NULL,
+            created_at        INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+
+            FOREIGN KEY (examination_id) REFERENCES examinations(id)
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_examination_conversations ON examination_conversations(examination_id)')
+
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS cost_alerts (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             threshold_pct   INTEGER NOT NULL,
