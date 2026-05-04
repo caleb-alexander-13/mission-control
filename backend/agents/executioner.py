@@ -233,22 +233,24 @@ class ExecutionerAgent(BaseAgent):
             import os
             finding = self._get_finding(exam["finding_id"])
 
-            # Build alert message with action links
+            # Build alert message
             gameplan = exam['gameplan']
-            finding_text = finding['finding_text'][:150]
+            finding_text = finding['finding_text'][:100]
 
             # Create action URLs using configurable base URL (for phone access)
             base_url = os.getenv("MISSION_CONTROL_URL", "http://localhost:8000")
             approve_url = f"{base_url}/api/agent-pipeline/examinations/{exam['id']}/approve"
             deny_url = f"{base_url}/api/agent-pipeline/examinations/{exam['id']}/deny"
 
-            msg = f"{gameplan}\n\nFinding: {finding_text}\n\n---\n✅ APPROVE: {approve_url}\n❌ DENY: {deny_url}"
+            msg = f"{gameplan}\n\n{finding_text}"
 
-            # Send notification via ntfy
+            # Send notification via ntfy with approve button
             success = send_notification(
                 msg,
                 title=f"[{finding['source_name'].upper()}] Action Required ({exam['priority'].upper()})",
-                tags="rotating_light"
+                tags="rotating_light",
+                action_url=approve_url,
+                action_label="APPROVE"
             )
 
             if success:
