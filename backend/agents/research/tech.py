@@ -59,6 +59,30 @@ class TechAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Tech RSS error: {e}")
 
+        # Try AI model release tracking
+        try:
+            findings.extend(self._fetch_ai_releases())
+        except Exception as e:
+            logger.error(f"AI releases error: {e}")
+
+        # Try GitHub trending repositories
+        try:
+            findings.extend(self._fetch_github_trending())
+        except Exception as e:
+            logger.error(f"GitHub trending error: {e}")
+
+        # Try Product Hunt newest products
+        try:
+            findings.extend(self._fetch_product_hunt())
+        except Exception as e:
+            logger.error(f"Product Hunt error: {e}")
+
+        # Try security advisories and CVEs
+        try:
+            findings.extend(self._fetch_security_advisories())
+        except Exception as e:
+            logger.error(f"Security advisories error: {e}")
+
         return findings
 
     def _fetch_newsapi_tech(self) -> List[Dict[str, Any]]:
@@ -76,8 +100,10 @@ class TechAgent(BaseAgent):
 
         findings = []
         for article in data.get("articles", [])[:5]:
+            title = article.get("title", "")
+            description = article.get("description") or ""
             findings.append({
-                "text": article.get("title", "") + " " + article.get("description", ""),
+                "text": (title + " " + description).strip(),
                 "source_url": article.get("url"),
                 "source_name": "NewsAPI"
             })
@@ -129,6 +155,146 @@ class TechAgent(BaseAgent):
                 logger.error(f"RSS feed error for {url}: {e}")
 
         logger.info(f"Fetched {len(findings)} articles from tech RSS feeds")
+        return findings
+
+    def _fetch_ai_releases(self) -> List[Dict[str, Any]]:
+        """Monitor AI model releases from major labs."""
+        findings = []
+        try:
+            # Monitor Anthropic's website for Claude releases
+            url = "https://www.anthropic.com"
+            response = requests.get(url, timeout=5)
+            if "claude" in response.text.lower():
+                finding_text = "Anthropic Claude updates or new model releases - check official announcements"
+                findings.append({
+                    "text": finding_text,
+                    "source_url": "https://www.anthropic.com",
+                    "source_name": "Anthropic"
+                })
+
+            # Monitor OpenAI announcements via their blog RSS
+            openai_rss = "https://openai.com/blog/rss.xml"
+            try:
+                feed = feedparser.parse(openai_rss)
+                for entry in feed.entries[:3]:
+                    if any(word in entry.get("title", "").lower() for word in ["gpt", "model", "release"]):
+                        findings.append({
+                            "text": entry.get("title", "OpenAI announcement"),
+                            "source_url": entry.get("link", "https://openai.com/blog"),
+                            "source_name": "OpenAI Blog"
+                        })
+            except Exception as e:
+                logger.debug(f"OpenAI RSS error: {e}")
+
+            logger.info(f"Fetched {len(findings)} AI release updates")
+        except Exception as e:
+            logger.warning(f"AI releases fetch failed: {e}")
+
+        return findings
+
+    def _fetch_github_trending(self) -> List[Dict[str, Any]]:
+        """Fetch trending GitHub repositories."""
+        findings = []
+        try:
+            # GitHub trending endpoint (unofficial but reliable)
+            url = "https://api.github.com/search/repositories"
+            today = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 86400))  # Last 24 hours
+
+            params = {
+                "q": f"created:>{today} stars:>100",
+                "sort": "stars",
+                "order": "desc",
+                "per_page": 5
+            }
+
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            for repo in data.get("items", []):
+                if repo.get("language"):  # Only repos with detected language
+                    finding_text = f"GitHub trending: {repo['name']} ({repo['language']}) - {repo['description'][:100] if repo.get('description') else 'Rising project'}"
+                    findings.append({
+                        "text": finding_text,
+                        "source_url": repo.get("html_url"),
+                        "source_name": "GitHub Trending"
+                    })
+
+            logger.info(f"Fetched {len(findings)} trending GitHub repos")
+        except Exception as e:
+            logger.warning(f"GitHub trending fetch failed: {e}")
+
+        return findings
+
+    def _fetch_product_hunt(self) -> List[Dict[str, Any]]:
+        """Fetch newest products from Product Hunt."""
+        findings = []
+        try:
+            # Product Hunt API endpoint (free tier)
+            url = "https://api.producthunt.com/v2/posts"
+
+            # Note: Requires Product Hunt API token for authentication
+            # For now, use RSS feed alternative
+            ph_rss = "https://www.producthunt.com/feed.xml"
+            feed = feedparser.parse(ph_rss)
+
+            for entry in feed.entries[:5]:
+                finding_text = f"Product Hunt launch: {entry.get('title', 'New product')} - {entry.get('summary', '')[:100]}"
+                findings.append({
+                    "text": finding_text,
+                    "source_url": entry.get("link", "https://www.producthunt.com"),
+                    "source_name": "Product Hunt"
+                })
+
+            logger.info(f"Fetched {len(findings)} new products from Product Hunt")
+        except Exception as e:
+            logger.warning(f"Product Hunt fetch failed: {e}")
+
+        return findings
+
+    def _fetch_security_advisories(self) -> List[Dict[str, Any]]:
+        """Fetch security advisories and critical CVEs."""
+        findings = []
+        try:
+            # National Vulnerability Database RSS feed
+            url = "https://services.nvd.nist.gov/rest/xml/cves/1.0"
+
+            # Alternative: Use CVE RSS feed
+            cve_rss = "https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-modified.json"
+
+            # For now, use a simpler approach - monitor security.txt and advisories
+            # Check CISA alerts
+            cisa_url = "https://www.cisa.gov/news-events/news"
+
+            response = requests.get(cisa_url, timeout=10)
+            if response.status_code == 200 and ("alert" in response.text.lower() or "critical" in response.text.lower()):
+                finding_text = "CISA security alert or advisory - check for critical vulnerabilities affecting your infrastructure"
+                findings.append({
+                    "text": finding_text,
+                    "source_url": "https://www.cisa.gov/news-events/news",
+                    "source_name": "CISA Alerts"
+                })
+
+            # Python/Node.js security releases
+            npm_security = "https://registry.npmjs.org/-/npm/v1/security/advisories"
+            try:
+                resp = requests.get(npm_security, timeout=5)
+                if resp.status_code == 200:
+                    advisories = resp.json()
+                    if advisories:
+                        finding_text = f"npm security advisory - {len(advisories)} recent vulnerabilities detected in JavaScript ecosystem"
+                        findings.append({
+                            "text": finding_text,
+                            "source_url": "https://www.npmjs.com/advisories",
+                            "source_name": "npm Security"
+                        })
+            except Exception as e:
+                logger.debug(f"npm security check failed: {e}")
+
+            logger.info(f"Fetched {len(findings)} security advisories")
+        except Exception as e:
+            logger.warning(f"Security advisories fetch failed: {e}")
+
         return findings
 
     def _process_finding(self, finding: Dict[str, Any]) -> None:
