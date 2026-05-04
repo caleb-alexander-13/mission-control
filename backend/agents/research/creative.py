@@ -39,6 +39,50 @@ class CreativeAgent(BaseAgent):
         """Fetch creative industry news from available sources."""
         findings = []
 
+        # CAVALLI & HILDA FOCUSED SOURCES
+        # Wedding venue design trends
+        try:
+            findings.extend(self._fetch_wedding_venue_trends())
+        except Exception as e:
+            logger.error(f"Wedding venue trends error: {e}")
+
+        # Interior design portfolio inspiration
+        try:
+            findings.extend(self._fetch_interior_design_portfolio())
+        except Exception as e:
+            logger.error(f"Interior design portfolio error: {e}")
+
+        # Luxury wedding brand positioning
+        try:
+            findings.extend(self._fetch_luxury_wedding_branding())
+        except Exception as e:
+            logger.error(f"Luxury wedding branding error: {e}")
+
+        # Wedding/event industry news
+        try:
+            findings.extend(self._fetch_wedding_industry_news())
+        except Exception as e:
+            logger.error(f"Wedding industry news error: {e}")
+
+        # Competitor venue analysis
+        try:
+            findings.extend(self._fetch_competitor_venues())
+        except Exception as e:
+            logger.error(f"Competitor venues error: {e}")
+
+        # Collaboration & partnership opportunities
+        try:
+            findings.extend(self._fetch_collaboration_opportunities())
+        except Exception as e:
+            logger.error(f"Collaboration opportunities error: {e}")
+
+        # Website & UX trends for luxury brands
+        try:
+            findings.extend(self._fetch_website_ux_trends())
+        except Exception as e:
+            logger.error(f"Website UX trends error: {e}")
+
+        # GENERAL CREATIVE SOURCES
         # Try NewsAPI for entertainment
         if self.newsapi_key:
             try:
@@ -81,6 +125,224 @@ class CreativeAgent(BaseAgent):
             findings.extend(self._fetch_creative_insights())
         except Exception as e:
             logger.error(f"Creative insights error: {e}")
+
+        return findings
+
+    def _fetch_wedding_venue_trends(self) -> List[Dict[str, Any]]:
+        """Fetch wedding venue design and event trends."""
+        findings = []
+        try:
+            # The Knot wedding trends
+            findings.append({
+                "text": "The Knot: Latest wedding venue design trends, ceremony backdrops, reception layouts, and 2026 style predictions for luxury events",
+                "source_url": "https://www.theknot.com/content/wedding-decor-ideas",
+                "source_name": "The Knot"
+            })
+
+            # Wedding Wire vendor insights
+            findings.append({
+                "text": "WeddingWire: Top rated wedding venues, vendor partnerships, event design innovations, and venue marketing strategies",
+                "source_url": "https://www.weddingwire.com/wedding-venues",
+                "source_name": "WeddingWire"
+            })
+
+            # Martha Stewart Weddings
+            findings.append({
+                "text": "Martha Stewart Weddings: Luxury wedding design inspiration, venue styling, outdoor event ideas, and seasonal trends",
+                "source_url": "https://www.marthastewart.com/weddings",
+                "source_name": "Martha Stewart Weddings"
+            })
+
+            # 100 Layer Cake wedding inspiration
+            findings.append({
+                "text": "100 Layer Cake: Real wedding features, venue spotlights, design ideas, and wedding industry insights",
+                "source_url": "https://www.100layercake.com",
+                "source_name": "100 Layer Cake"
+            })
+
+            logger.info(f"Fetched {len(findings)} wedding venue trend findings")
+        except Exception as e:
+            logger.warning(f"Wedding venue trends fetch failed: {e}")
+
+        return findings
+
+    def _fetch_interior_design_portfolio(self) -> List[Dict[str, Any]]:
+        """Fetch interior design portfolio inspiration and trends."""
+        findings = []
+        try:
+            # Architectural Digest
+            findings.append({
+                "text": "Architectural Digest: Interior design portfolio inspiration, award-winning projects, designer spotlights, and home design trends",
+                "source_url": "https://www.architecturaldigest.com",
+                "source_name": "Architectural Digest"
+            })
+
+            # Elle Decor
+            findings.append({
+                "text": "Elle Decor: Designer interviews, portfolio inspiration, trend forecasting, and luxury home design ideas",
+                "source_url": "https://www.elledecor.com",
+                "source_name": "Elle Decor"
+            })
+
+            # Design Observer
+            findings.append({
+                "text": "Design Observer: Design criticism, portfolio analysis, industry trends, and creative professional insights",
+                "source_url": "https://designobserver.com",
+                "source_name": "Design Observer"
+            })
+
+            # Interior Design Magazine
+            findings.append({
+                "text": "Interior Design Magazine: Professional design trends, portfolio case studies, designer business strategies, and project spotlights",
+                "source_url": "https://www.interiordesign.net",
+                "source_name": "Interior Design Magazine"
+            })
+
+            logger.info(f"Fetched {len(findings)} interior design portfolio findings")
+        except Exception as e:
+            logger.warning(f"Interior design portfolio fetch failed: {e}")
+
+        return findings
+
+    def _fetch_luxury_wedding_branding(self) -> List[Dict[str, Any]]:
+        """Fetch luxury wedding brand positioning and strategy insights."""
+        findings = []
+        try:
+            findings.append({
+                "text": "Luxury wedding brand positioning: How high-end venues differentiate through storytelling, exclusivity messaging, and premium experience positioning",
+                "source_url": "https://www.luxe.com/weddings",
+                "source_name": "Luxe Magazine"
+            })
+
+            findings.append({
+                "text": "Wedding venue brand strategy: Building trust through social proof, showcasing real weddings, celebrity events, and unique venue narratives",
+                "source_url": "https://www.brides.com/gallery",
+                "source_name": "Brides Magazine"
+            })
+
+            findings.append({
+                "text": "Luxury experience marketing: How premium venues create exclusivity, VIP experiences, and emotional brand connections with affluent couples",
+                "source_url": "https://www.weddingstyle.co.uk",
+                "source_name": "Wedding Style"
+            })
+
+            logger.info(f"Fetched {len(findings)} luxury wedding branding findings")
+        except Exception as e:
+            logger.warning(f"Luxury wedding branding fetch failed: {e}")
+
+        return findings
+
+    def _fetch_wedding_industry_news(self) -> List[Dict[str, Any]]:
+        """Fetch wedding and event industry news and opportunities."""
+        findings = []
+        try:
+            if self.newsapi_key:
+                url = "https://newsapi.org/v2/everything"
+                params = {
+                    "q": "wedding venue OR wedding event OR luxury wedding",
+                    "sortBy": "publishedAt",
+                    "language": "en",
+                    "apiKey": self.newsapi_key
+                }
+                response = requests.get(url, params=params, timeout=10)
+                data = response.json()
+
+                for article in data.get("articles", [])[:3]:
+                    title = article.get("title", "")
+                    description = article.get("description") or ""
+                    findings.append({
+                        "text": (title + " " + description).strip(),
+                        "source_url": article.get("url"),
+                        "source_name": "Wedding Industry News"
+                    })
+
+            logger.info(f"Fetched {len(findings)} wedding industry news items")
+        except Exception as e:
+            logger.debug(f"Wedding industry news fetch failed: {e}")
+
+        return findings
+
+    def _fetch_competitor_venues(self) -> List[Dict[str, Any]]:
+        """Fetch competitor venue analysis and benchmarking."""
+        findings = []
+        try:
+            findings.append({
+                "text": "Competitor venue analysis: Monitor high-end wedding venues in Hudson Valley region for pricing, amenities, guest capacity, and unique offerings",
+                "source_url": "https://www.theknot.com/marketplace/wedding-venues/new-york",
+                "source_name": "The Knot Venues"
+            })
+
+            findings.append({
+                "text": "Venue comparison: Track competitor website design, photography quality, virtual tours, booking process, and guest testimonials",
+                "source_url": "https://www.weddingwire.com/venue-search/new-york",
+                "source_name": "WeddingWire Venue Search"
+            })
+
+            findings.append({
+                "text": "Guest reviews and reputation: Monitor competitor ratings, guest feedback, common praise points, and areas for improvement on review platforms",
+                "source_url": "https://www.google.com/maps",
+                "source_name": "Google Reviews & Maps"
+            })
+
+            logger.info(f"Fetched {len(findings)} competitor venue findings")
+        except Exception as e:
+            logger.warning(f"Competitor venue fetch failed: {e}")
+
+        return findings
+
+    def _fetch_collaboration_opportunities(self) -> List[Dict[str, Any]]:
+        """Fetch partnership and collaboration opportunities in wedding/design industries."""
+        findings = []
+        try:
+            findings.append({
+                "text": "Wedding vendor partnerships: Opportunities to collaborate with photographers, florists, caterers, planners - cross-promotion and bundled packages",
+                "source_url": "https://www.theknot.com/marketplace",
+                "source_name": "The Knot Marketplace"
+            })
+
+            findings.append({
+                "text": "Interior design collaboration: Partner with furniture designers, home decor brands, photographers for portfolio projects and mutual promotion",
+                "source_url": "https://www.behance.net",
+                "source_name": "Behance Collaborations"
+            })
+
+            findings.append({
+                "text": "Event and hospitality partnerships: Joint ventures with hotels, resorts, event planners for cross-referrals and expanded services",
+                "source_url": "https://www.hospitality.org",
+                "source_name": "Hospitality Industry"
+            })
+
+            logger.info(f"Fetched {len(findings)} collaboration opportunity findings")
+        except Exception as e:
+            logger.warning(f"Collaboration opportunities fetch failed: {e}")
+
+        return findings
+
+    def _fetch_website_ux_trends(self) -> List[Dict[str, Any]]:
+        """Fetch website design and UX trends for luxury brands."""
+        findings = []
+        try:
+            findings.append({
+                "text": "Luxury website design trends: Minimalist layouts, high-quality photography, intuitive navigation, fast loading, mobile optimization, and virtual tours",
+                "source_url": "https://www.awwwards.com/websites/portfolio/",
+                "source_name": "Awwwards - Luxury Designs"
+            })
+
+            findings.append({
+                "text": "Wedding website best practices: Gallery features, vendor directories, timeline builders, RSVP tools, and storytelling elements for venue sites",
+                "source_url": "https://www.webdesignerdepot.com",
+                "source_name": "Web Designer Depot"
+            })
+
+            findings.append({
+                "text": "Portfolio website optimization: Showcase design work professionally, implement filtering/categorization, client testimonials, and case studies for designers",
+                "source_url": "https://www.smashingmagazine.com",
+                "source_name": "Smashing Magazine"
+            })
+
+            logger.info(f"Fetched {len(findings)} website UX trend findings")
+        except Exception as e:
+            logger.warning(f"Website UX trends fetch failed: {e}")
 
         return findings
 
@@ -402,6 +664,25 @@ class CreativeAgent(BaseAgent):
     def _categorize(self, text: str) -> str:
         """Categorize finding based on content."""
         text_lower = text.lower()
+
+        # Cavalli & Hilda specific categories
+        if "wedding" in text_lower or "venue" in text_lower or "event" in text_lower:
+            return "cavalli:wedding_venue"
+        elif "portfolio" in text_lower or "interior" in text_lower or "designer" in text_lower:
+            return "hilda:portfolio_inspiration"
+        elif "luxury" in text_lower or "brand" in text_lower or "positioning" in text_lower:
+            if "wedding" in text_lower:
+                return "cavalli:brand_strategy"
+            else:
+                return "hilda:brand_strategy"
+        elif "website" in text_lower or "ux" in text_lower or "ui" in text_lower:
+            return "cavalli_hilda:website_optimization"
+        elif "partnership" in text_lower or "collaboration" in text_lower or "vendor" in text_lower:
+            return "cavalli_hilda:collaboration"
+        elif "competitor" in text_lower or "benchmark" in text_lower or "review" in text_lower:
+            return "cavalli_hilda:competitive_analysis"
+
+        # General creative categories
         if "design" in text_lower or "ui" in text_lower:
             return "design_trend"
         elif "trend" in text_lower:
