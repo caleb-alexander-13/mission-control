@@ -56,14 +56,34 @@ export default function Sidebar({ collapsed, onToggle, pipelineStatus, findings,
             {Object.entries(pipelineStatus?.agents || {}).map(([name, info]) => {
               const isWorking = info.status === 'working' || info.status === 'analyzing' || info.status === 'executing'
               const pending = info.findings_pending ?? info.pending_examinations ?? info.pending_actions ?? 0
+              const latestFinding = findings[name]
               return (
-                <div key={name} className="flex items-center gap-2 px-3 py-2 border-b border-white/5 hover:bg-white/5">
-                  <div
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: isWorking ? '#fbbf24' : '#10b981' }}
-                  />
-                  <span className="text-xs capitalize flex-1 truncate">{name}</span>
-                  {pending > 0 && <span className="text-xs text-gray-500 font-semibold">{pending}</span>}
+                <div key={name} className="border-b border-white/5">
+                  <div className="flex items-center gap-2 px-3 py-2 hover:bg-white/5">
+                    <div
+                      className="w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: isWorking ? '#fbbf24' : '#10b981' }}
+                    />
+                    <span className="text-xs capitalize flex-1 truncate font-semibold">{name}</span>
+                    {pending > 0 && <span className="text-xs text-gray-500 font-semibold">{pending}</span>}
+                  </div>
+                  {latestFinding && (
+                    <div className="px-3 py-2 bg-white/5 border-t border-white/5">
+                      <div className="text-xs text-gray-300 mb-1 line-clamp-2">
+                        {latestFinding.finding_text}
+                      </div>
+                      {latestFinding.source_name && (
+                        <div className="text-xs text-gray-500">
+                          📌 {latestFinding.source_name}
+                        </div>
+                      )}
+                      {latestFinding.importance_score && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          ⭐ Score: {latestFinding.importance_score}/10
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
