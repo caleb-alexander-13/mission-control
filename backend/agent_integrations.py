@@ -185,9 +185,28 @@ For each finding, create an object with:
 - "analysis": importance summary
 - "gameplan": recommended action
 - "priority": critical/high/medium/low
-- "needs_approval": true if needs user approval, false if routine
+- "needs_approval": true ONLY if this needs human judgment; false if routine/informational
 - "trade_action" (ONLY for finance findings with category "trade_signal:*"): {{"ticker": "AAPL", "direction": "buy" or "sell", "confidence": 1-10}}
   - Bullish/positive news = buy. Bearish/risk/downgrade news = sell. Omit for non-finance findings.
+
+APPROVAL RULES (be strict - auto-execute when possible):
+needs_approval=TRUE only for:
+- CRITICAL or HIGH priority findings requiring time-sensitive action
+- Trade signals with confidence 7+ (needs judgment on execution)
+- Security vulnerabilities or breaches
+- Breaking news affecting multiple projects
+- Major market moves (>5% swings)
+- Coaching/personnel changes in sports
+- Findings that require judgment vs. automation
+
+needs_approval=FALSE for:
+- General news/trends (auto-update databases)
+- Medium/Low priority findings (informational)
+- Routine scouting updates (auto-post to War Room)
+- Design trends (auto-save for reference)
+- Tool releases/announcements (auto-catalog)
+- Economic data updates (auto-track)
+- Injury reports (update prospect database)
 
 Findings JSON:
 {findings_json}
