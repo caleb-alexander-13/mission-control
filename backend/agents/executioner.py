@@ -9,6 +9,7 @@ from typing import List, Dict, Any, Optional
 from agents.base_agent import BaseAgent
 from agent_integrations import call_gm_seat_api
 from utils.notifications import send_notification
+from project_integrations import route_finding_to_projects, execute_project_integration
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,8 @@ class ExecutionerAgent(BaseAgent):
     def _execute_autonomous_action(self, exam: Dict[str, Any]) -> None:
         """Execute an autonomous action (paper trade or War Room update)."""
         try:
+            finding = self._get_finding(exam["finding_id"])
+
             # Try paper trade first if trade_action exists
             if self._execute_paper_trade(exam):
                 self._log_action(
@@ -170,11 +173,28 @@ class ExecutionerAgent(BaseAgent):
                     "Trade executed"
                 )
                 self._update_examination_status(exam["id"], "executed")
+
+                # Route finding to relevant projects
+                project_actions = route_finding_to_projects(finding, exam)
+                for action in project_actions:
+                    execute_project_integration(action)
+
                 return
 
-            # Otherwise try War Room update
-            finding = self._get_finding(exam["finding_id"])
+            # Try project integrations (route to Cavalli, Hilda, War Room, etc.)
+            project_actions = route_finding_to_projects(finding, exam)
+            if project_actions:
+                for action in project_actions:
+                    success = execute_project_integration(action)
+                    self._log_action(
+                        exam["id"],
+                        "autonomous",
+                        f"Project Integration: {action.get('project')}",
+                        "success" if success else "failed",
+                        action.get("description")
+                    )
 
+            # Otherwise try War Room update (legacy)
             if "war room" in exam["gameplan"].lower() or "update war room" in exam["gameplan"].lower():
                 result = call_gm_seat_api({
                     "finding_text": finding["finding_text"],
@@ -194,16 +214,15 @@ class ExecutionerAgent(BaseAgent):
 
                 logger.info(f"Executed autonomous action for examination {exam['id']}")
 
-                # Update examination status
-                self._update_examination_status(exam["id"], "executed")
-            else:
-                logger.debug(f"Gameplan doesn't trigger autonomous action: {exam['gameplan']}")
+            # Update examination status
+            self._update_examination_status(exam["id"], "executed")
+
         except Exception as e:
             logger.error(f"Error executing action: {e}", exc_info=True)
             self._log_action(
                 exam["id"],
                 "autonomous",
-                "Update War Room",
+                "Autonomous Action",
                 "failed",
                 str(e)
             )
