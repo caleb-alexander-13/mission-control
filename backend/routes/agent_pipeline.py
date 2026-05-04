@@ -444,6 +444,73 @@ async def get_conversation(exam_id: int):
         logger.error(f"Error fetching conversation for exam {exam_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/agent-pipeline/trading-log")
+async def get_trading_log(limit: int = Query(50, description="Number of trades to return")):
+    """Get trading history with P&L details."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Get all trades with current prices
+        cursor.execute("""
+            SELECT id, ticker, action, shares, price, cash_impact, reason, created_at
+            FROM paper_trades
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+
+        trades = cursor.fetchall()
+
+        # Get current cash
+        cursor.execute("SELECT balance FROM paper_cash WHERE id=1")
+        cash_row = cursor.fetchone()
+        current_cash = cash_row[0] if cash_row else 0
+
+        # Get current portfolio
+        cursor.execute("SELECT ticker, shares, avg_cost FROM paper_portfolio WHERE shares > 0")
+        holdings = cursor.fetchall()
+
+        trade_list = []
+        total_pnl = 0
+        total_value = current_cash
+
+        for trade in trades:
+            trade_dict = {
+                "id": trade[0],
+                "ticker": trade[1],
+                "action": trade[2],
+                "shares": trade[3],
+                "price": trade[4],
+                "cash_impact": trade[5],
+                "reason": trade[6],
+                "timestamp": trade[7]
+            }
+            trade_list.append(trade_dict)
+
+        # Calculate current portfolio value
+        for holding in holdings:
+            ticker, shares, avg_cost = holding
+            # For now, use avg_cost as current price (would need live data)
+            position_value = shares * avg_cost
+            total_value += position_value
+            pnl = (avg_cost - avg_cost) * shares  # Placeholder
+            total_pnl += pnl
+
+        conn.close()
+
+        return {
+            "trades": trade_list,
+            "summary": {
+                "cash": round(current_cash, 2),
+                "total_value": round(total_value, 2),
+                "total_pnl": round(total_pnl, 2),
+                "trade_count": len(trade_list)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching trading log: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/agent-pipeline/examinations/{exam_id}/ask")
 async def ask_agent(exam_id: int, data: dict):
     """Ask the agent a follow-up question about the examination."""

@@ -77,6 +77,16 @@ class ExaminationAgent(BaseAgent):
                 if result.get("trade_action"):
                     trade_action_json = json.dumps(result.get("trade_action"))
 
+                # Auto-approve high-confidence trades (confidence >= 7)
+                needs_approval = result.get("needs_approval", False)
+                if result.get("trade_action"):
+                    confidence = result["trade_action"].get("confidence", 0)
+                    # Auto-execute high-confidence trades, require approval for lower confidence
+                    if confidence >= 7:
+                        needs_approval = False
+                    elif confidence < 5:
+                        needs_approval = True
+
                 cursor.execute('''
                     INSERT INTO examinations
                     (finding_id, claude_analysis, gameplan, priority, requires_approval, status, trade_action, created_at, updated_at)
@@ -86,7 +96,7 @@ class ExaminationAgent(BaseAgent):
                     result.get("analysis", ""),
                     result.get("gameplan", ""),
                     result.get("priority", "medium"),
-                    1 if result.get("needs_approval", False) else 0,
+                    1 if needs_approval else 0,
                     'pending_action',
                     trade_action_json,
                     now,
