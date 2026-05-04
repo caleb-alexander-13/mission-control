@@ -103,6 +103,48 @@ async def get_examinations():
         logger.error(f"Error fetching examinations: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/agent-pipeline/approvals")
+async def get_pending_approvals():
+    """Get examinations pending user approval."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT e.id, e.finding_id, rf.finding_text, rf.agent_name, e.claude_analysis,
+                   e.gameplan, e.priority, e.created_at
+            FROM examinations e
+            JOIN research_findings rf ON e.finding_id = rf.id
+            WHERE e.status = 'pending_action' AND e.requires_approval = 1
+            ORDER BY e.priority DESC, e.created_at ASC
+        """)
+
+        rows = cursor.fetchall()
+        approvals = [
+            {
+                "id": row[0],
+                "finding_id": row[1],
+                "finding_text": row[2],
+                "agent": row[3],
+                "analysis": row[4],
+                "gameplan": row[5],
+                "priority": row[6],
+                "created_at": row[7],
+                "approve_url": f"/api/agent-pipeline/examinations/{row[0]}/approve",
+                "deny_url": f"/api/agent-pipeline/examinations/{row[0]}/deny"
+            }
+            for row in rows
+        ]
+
+        conn.close()
+        return {
+            "total": len(approvals),
+            "pending_approvals": approvals
+        }
+    except Exception as e:
+        logger.error(f"Error fetching pending approvals: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/agent-pipeline/actions")
 async def get_actions():
     """Get recent actions (last 24 hours)."""
@@ -256,36 +298,94 @@ async def get_cost_summary():
         logger.error(f"Error fetching cost summary: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/agent-pipeline/approve-action")
-async def approve_action(data: dict):
-    """Approve or reject a pending examination action."""
+@router.post("/agent-pipeline/examinations/{exam_id}/approve")
+async def approve_examination(exam_id: int):
+    """Approve a pending examination for automatic execution."""
     try:
-        examination_id = data.get("examination_id")
-        approved = data.get("approved", False)
-
-        if not examination_id:
-            raise HTTPException(status_code=400, detail="examination_id required")
+        import time
 
         conn = get_db()
         cursor = conn.cursor()
 
-        # Update examination status
-        new_status = "executed" if approved else "archived"
+        # Check if examination exists and requires approval
+        cursor.execute("SELECT id, status FROM examinations WHERE id = ?", (exam_id,))
+        exam = cursor.fetchone()
+
+        if not exam:
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"Examination {exam_id} not found")
+
+        # Mark as pending_action so executioner picks it up immediately
+        now = int(datetime.now().timestamp() * 1000)
         cursor.execute("""
             UPDATE examinations
-            SET status = ?
+            SET status = ?, requires_approval = 0, updated_at = ?
             WHERE id = ?
-        """, (new_status, examination_id))
+        """, ("pending_action", now, exam_id))
+
+        # Log the approval decision
+        cursor.execute("""
+            INSERT INTO actions
+            (examination_id, action_type, action_description, result, created_at, executed_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (exam_id, "approval", "User approved examination", "success", now, now))
 
         conn.commit()
         conn.close()
 
+        logger.info(f"User approved examination {exam_id}")
         return {
             "status": "success",
-            "message": f"Action {'approved' if approved else 'rejected'}"
+            "message": f"Examination {exam_id} approved and queued for execution"
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error approving action: {e}")
+        logger.error(f"Error approving examination {exam_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/agent-pipeline/examinations/{exam_id}/deny")
+async def deny_examination(exam_id: int):
+    """Deny a pending examination (skip it)."""
+    try:
+        import time
+
+        conn = get_db()
+        cursor = conn.cursor()
+
+        # Check if examination exists
+        cursor.execute("SELECT id, status FROM examinations WHERE id = ?", (exam_id,))
+        exam = cursor.fetchone()
+
+        if not exam:
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"Examination {exam_id} not found")
+
+        # Mark as denied
+        now = int(datetime.now().timestamp() * 1000)
+        cursor.execute("""
+            UPDATE examinations
+            SET status = ?, updated_at = ?
+            WHERE id = ?
+        """, ("denied", now, exam_id))
+
+        # Log the denial decision
+        cursor.execute("""
+            INSERT INTO actions
+            (examination_id, action_type, action_description, result, created_at, executed_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (exam_id, "approval", "User denied examination", "skipped", now, now))
+
+        conn.commit()
+        conn.close()
+
+        logger.info(f"User denied examination {exam_id}")
+        return {
+            "status": "success",
+            "message": f"Examination {exam_id} denied and archived"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error denying examination {exam_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
