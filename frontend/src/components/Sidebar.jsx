@@ -3,6 +3,7 @@ import { useState } from 'react'
 const TABS = [
   { id: 'agents', icon: '◉', label: 'Agents' },
   { id: 'metrics', icon: '#', label: 'Metrics' },
+  { id: 'trading', icon: '💰', label: 'Trading' },
   { id: 'alerts', icon: '⚡', label: 'Alerts' },
 ]
 
@@ -15,7 +16,7 @@ const AGENT_COLORS = {
   executioner: '#ef4444',
 }
 
-export default function Sidebar({ collapsed, onToggle, pipelineStatus, findings, examinations, pipelineActions, activities, costs }) {
+export default function Sidebar({ collapsed, onToggle, pipelineStatus, findings, examinations, pipelineActions, activities, costs, portfolio, tradingLog }) {
   const [activeTab, setActiveTab] = useState('agents')
 
   return (
@@ -89,6 +90,37 @@ export default function Sidebar({ collapsed, onToggle, pipelineStatus, findings,
           </div>
         )}
 
+        {/* Trading Tab */}
+        {activeTab === 'trading' && !collapsed && (
+          <div className="p-3 space-y-3">
+            <div className="space-y-2">
+              <StatCard label="Cash" value={`$${portfolio?.cash?.toFixed(2) || '0.00'}`} />
+              <StatCard label="Total Value" value={`$${portfolio?.total_value?.toFixed(2) || '0.00'}`} />
+              <StatCard
+                label="P&L"
+                value={`${portfolio?.pnl >= 0 ? '+' : ''}$${portfolio?.pnl?.toFixed(2) || '0.00'}`}
+                color={portfolio?.pnl >= 0 ? '#10b981' : '#ef4444'}
+              />
+            </div>
+            {tradingLog?.trades && tradingLog.trades.length > 0 && (
+              <div className="border-t border-white/10 pt-2">
+                <div className="text-xs text-gray-400 mb-2 font-semibold">Recent Trades</div>
+                {tradingLog.trades.slice(0, 5).map((trade, i) => (
+                  <div key={i} className="text-xs py-1 border-b border-white/5">
+                    <div className="flex justify-between">
+                      <span className="text-gray-300">{trade.action.toUpperCase()} {trade.shares.toFixed(2)} {trade.ticker}</span>
+                      <span className={trade.action === 'buy' ? 'text-red-400' : 'text-green-400'}>
+                        {trade.action === 'buy' ? '-' : '+'}${Math.abs(trade.cash_impact).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-gray-500">@ ${trade.price.toFixed(2)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Alerts Tab */}
         {activeTab === 'alerts' && !collapsed && (
           <div>
@@ -114,11 +146,11 @@ export default function Sidebar({ collapsed, onToggle, pipelineStatus, findings,
   )
 }
 
-function StatCard({ label, value }) {
+function StatCard({ label, value, color }) {
   return (
     <div className="glass p-2 rounded">
       <div className="text-xs text-gray-400">{label}</div>
-      <div className="text-sm font-bold">{value}</div>
+      <div className="text-sm font-bold" style={color ? { color } : {}}>{value}</div>
     </div>
   )
 }

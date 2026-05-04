@@ -46,6 +46,8 @@ export default function App() {
   const [pipelineActions, setPipelineActions] = useState([])
   const [activities, setActivities] = useState([])
   const [costs, setCosts] = useState(null)
+  const [portfolio, setPortfolio] = useState(null)
+  const [tradingLog, setTradingLog] = useState(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [pendingAlerts, setPendingAlerts] = useState([])
   const shownAlertsRef = useRef(new Set())
@@ -87,14 +89,16 @@ export default function App() {
       }
     }
 
-    // Fetch less frequently-changing data (findings, actions, activities, costs)
+    // Fetch less frequently-changing data (findings, actions, activities, costs, portfolio)
     const fetchStaticData = async () => {
       try {
-        const [findingsRes, actionsRes, activitiesRes, costsRes] = await Promise.all([
+        const [findingsRes, actionsRes, activitiesRes, costsRes, portfolioRes, tradingRes] = await Promise.all([
           fetch(`${API_BASE}/agent-pipeline/findings?importance_min=6`),
           fetch(`${API_BASE}/agent-pipeline/actions`),
           fetch(`${API_BASE}/activity/feed`),
           fetch(`${API_BASE}/cost/summary`),
+          fetch(`${API_BASE}/portfolio`),
+          fetch(`${API_BASE}/agent-pipeline/trading-log`),
         ])
 
         if (findingsRes.ok) {
@@ -119,6 +123,14 @@ export default function App() {
         if (costsRes.ok) {
           const data = await costsRes.json()
           setCosts(data)
+        }
+        if (portfolioRes.ok) {
+          const data = await portfolioRes.json()
+          setPortfolio(data)
+        }
+        if (tradingRes.ok) {
+          const data = await tradingRes.json()
+          setTradingLog(data)
         }
       } catch (err) {
         console.error('Fetch static data error:', err)
@@ -153,15 +165,45 @@ export default function App() {
         pipelineActions={pipelineActions}
         activities={activities}
         costs={costs}
+        portfolio={portfolio}
+        tradingLog={tradingLog}
       />
-      <div className="flex-1 h-screen overflow-hidden flex items-center justify-center">
-        <PixelOffice
-          pipelineStatus={pipelineStatus}
-          findings={findings}
-          examinations={examinations}
-          pipelineActions={pipelineActions}
-          costs={costs}
-        />
+      <div className="flex-1 h-screen overflow-hidden flex flex-col">
+        {portfolio && (
+          <div className="px-6 py-4 border-b border-gray-800 bg-gray-900/50">
+            <div className="flex items-center justify-between">
+              <div className="flex gap-6">
+                <div>
+                  <div className="text-xs text-gray-400">CASH</div>
+                  <div className="text-lg font-bold text-white">${portfolio.cash?.toFixed(2) || '0.00'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400">TOTAL VALUE</div>
+                  <div className="text-lg font-bold text-white">${portfolio.total_value?.toFixed(2) || '0.00'}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400">P&L</div>
+                  <div className={`text-lg font-bold ${portfolio.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {portfolio.pnl >= 0 ? '+' : ''}{portfolio.pnl?.toFixed(2) || '0.00'} ({portfolio.pnl_pct?.toFixed(1) || '0.0'}%)
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-400">HOLDINGS</div>
+                  <div className="text-lg font-bold text-white">{portfolio.holdings?.length || 0}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        <div className="flex-1 overflow-hidden flex items-center justify-center">
+          <PixelOffice
+            pipelineStatus={pipelineStatus}
+            findings={findings}
+            examinations={examinations}
+            pipelineActions={pipelineActions}
+            costs={costs}
+          />
+        </div>
       </div>
     </div>
   )
