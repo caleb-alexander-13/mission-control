@@ -230,10 +230,19 @@ class ExecutionerAgent(BaseAgent):
     def _send_alert(self, exam: Dict[str, Any]) -> None:
         """Send push alert (ntfy) for approval-required action."""
         try:
+            import os
             finding = self._get_finding(exam["finding_id"])
 
-            # Build alert message
-            msg = f"{exam['gameplan']}\n\nFinding: {finding['finding_text'][:150]}"
+            # Build alert message with action links
+            gameplan = exam['gameplan']
+            finding_text = finding['finding_text'][:150]
+
+            # Create action URLs using configurable base URL (for phone access)
+            base_url = os.getenv("MISSION_CONTROL_URL", "http://localhost:8000")
+            approve_url = f"{base_url}/api/agent-pipeline/examinations/{exam['id']}/approve"
+            deny_url = f"{base_url}/api/agent-pipeline/examinations/{exam['id']}/deny"
+
+            msg = f"{gameplan}\n\nFinding: {finding_text}\n\n---\n✅ APPROVE: {approve_url}\n❌ DENY: {deny_url}"
 
             # Send notification via ntfy
             success = send_notification(
