@@ -1,125 +1,150 @@
-# agents/examination.py
-import sqlite3
+"""Examination agent for analyzing findings and creating gameplans."""
+
 import logging
 import time
+import sqlite3
 from pathlib import Path
 from typing import List, Dict, Any
-from .base import BaseAgent
+
+from agents.base_agent import BaseAgent
+from agent_integrations import examine_findings_with_claude
+from utils.notifications import send_notification
 
 logger = logging.getLogger(__name__)
 
 DB_PATH = Path.home() / 'Desktop' / 'mission-control' / 'backend' / 'mission_control.db'
 
+
 class ExaminationAgent(BaseAgent):
-    """Agent that examines research findings and generates gameplans."""
+    """Analyzes research findings and creates actionable gameplans."""
 
     def __init__(self):
         super().__init__("examination")
-        self.db_path = DB_PATH
 
-    def get_pending_findings(self) -> List[Dict[str, Any]]:
-        """Get all findings pending examination."""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
+    def run_loop(self, interval_seconds: int = 900) -> None:
+        """Run examination agent loop every 15 minutes."""
+        self.running = True
+        logger.info(f"Starting examination agent loop (interval: {interval_seconds}s)")
 
-        try:
-            cursor.execute('''
-                SELECT id, agent_name, finding_text, source_name, importance_score, category
-                FROM research_findings
-                WHERE status = 'pending_examination'
-                ORDER BY created_at ASC
-            ''')
+        while self.running:
+            try:
+                self._examine_pending_findings()
+            except Exception as e:
+                logger.error(f"Error in examination agent: {e}", exc_info=True)
 
-            findings = [dict(row) for row in cursor.fetchall()]
-            return findings
-        finally:
-            conn.close()
+            time.sleep(interval_seconds)
 
-    def insert_examination(self,
-                         finding_id: int,
-                         claude_analysis: str,
-                         gameplan: str,
-                         priority: str,
-                         requires_approval: bool) -> int:
-        """Insert an examination result into the database."""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        try:
-            now = int(time.time() * 1000)
-            requires_approval_int = 1 if requires_approval else 0
-
-            cursor.execute('''
-                INSERT INTO examinations
-                (finding_id, claude_analysis, gameplan, priority, requires_approval, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (finding_id, claude_analysis, gameplan, priority, requires_approval_int, now, now))
-
-            conn.commit()
-            examination_id = cursor.lastrowid
-            logger.info(f"[examination] Inserted examination {examination_id} for finding {finding_id}")
-            return examination_id
-        except Exception as e:
-            logger.error(f"[examination] Error inserting examination: {e}")
-            raise
-        finally:
-            conn.close()
-
-    def mark_finding_examined(self, finding_id: int) -> None:
-        """Mark a finding as examined."""
-        conn = self.get_db_connection()
-        cursor = conn.cursor()
-
-        try:
-            now = int(time.time() * 1000)
-            cursor.execute('''
-                UPDATE research_findings
-                SET status = 'examined', updated_at = ?
-                WHERE id = ?
-            ''', (now, finding_id))
-            conn.commit()
-        finally:
-            conn.close()
-
-    def run_once(self) -> None:
-        """Run one iteration: fetch pending findings, examine with Claude, store results."""
-        logger.info("[examination] Running examination agent")
-
-        findings = self.get_pending_findings()
-        logger.info(f"[examination] Found {len(findings)} pending findings")
+    def _examine_pending_findings(self) -> None:
+        """Get pending findings, analyze with Claude, and create examinations."""
+        findings = self._get_pending_findings()
 
         if not findings:
+            logger.debug("No pending findings to examine")
             return
 
-        # Call Claude to examine findings
-        from backend.agent_integrations import examine_findings_with_claude
+        logger.info(f"Examining {len(findings)} pending findings")
 
-        try:
-            examination_results = examine_findings_with_claude(findings)
+        # Prepare findings for Claude
+        findings_for_claude = [
+            {
+                "id": f["id"],
+                "finding_text": f["finding_text"],
+                "importance_score": f["importance_score"],
+                "category": f["category"]
+            }
+            for f in findings
+        ]
 
-            for finding_id, result in examination_results.items():
-                try:
-                    finding_id = int(finding_id)
+        # Get Claude analysis
+        analysis_result = examine_findings_with_claude(findings_for_claude)
 
-                    # Extract fields from Claude response
-                    analysis = result.get('analysis', '')
-                    gameplan = result.get('gameplan', '')
-                    priority = result.get('priority', 'medium')
-                    needs_approval = result.get('needs_approval', False)
+        if not analysis_result:
+            logger.warning("Claude analysis returned empty result")
+            return
 
-                    # Insert examination
-                    self.insert_examination(
-                        finding_id=finding_id,
-                        claude_analysis=analysis,
-                        gameplan=gameplan,
-                        priority=priority,
-                        requires_approval=needs_approval
+        # Store examinations in database
+        conn = sqlite3.connect(str(DB_PATH))
+        cursor = conn.cursor()
+        now = int(time.time() * 1000)
+
+        for finding in findings:
+            finding_id = finding["id"]
+            if finding_id in analysis_result:
+                result = analysis_result[finding_id]
+
+                import json
+                trade_action_json = None
+                if result.get("trade_action"):
+                    trade_action_json = json.dumps(result.get("trade_action"))
+
+                # Aggressive mode: auto-execute trades at confidence >= 5
+                needs_approval = result.get("needs_approval", False)
+                if result.get("trade_action"):
+                    confidence = result["trade_action"].get("confidence", 0)
+                    # Auto-execute medium+ confidence trades, require approval only for low confidence (<5)
+                    if confidence >= 5:
+                        needs_approval = False
+                    else:
+                        needs_approval = True
+
+                cursor.execute('''
+                    INSERT INTO examinations
+                    (finding_id, claude_analysis, gameplan, priority, requires_approval, status, trade_action, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    finding_id,
+                    result.get("analysis", ""),
+                    result.get("gameplan", ""),
+                    result.get("priority", "medium"),
+                    1 if needs_approval else 0,
+                    'pending_action',
+                    trade_action_json,
+                    now,
+                    now
+                ))
+
+                # Update finding status
+                cursor.execute(
+                    'UPDATE research_findings SET status = ?, updated_at = ? WHERE id = ?',
+                    ('examined', now, finding_id)
+                )
+
+                # Send notification for approval-required items
+                if result.get("needs_approval"):
+                    agent = finding.get("agent_name", "unknown")
+                    priority = result.get("priority", "medium").upper()
+                    gameplan = result.get("gameplan", "")[:180]
+                    send_notification(
+                        f"[{agent.upper()} / {priority}] {gameplan}",
+                        title="Action Required — Mission Control",
+                        tags="rotating_light"
                     )
 
-                    # Mark finding as examined
-                    self.mark_finding_examined(finding_id)
+                logger.info(f"Created examination for finding {finding_id}")
+            else:
+                logger.warning(f"No analysis for finding {finding_id}")
 
-                except Exception as e:
-                    logger.error(f"[examination] Error processing examination result: {e}")
-        except Exception as e:
-            logger.error(f"[examination] Error examining findings: {e}")
+        conn.commit()
+        conn.close()
+
+        logger.info(f"Created {len([f for f in findings if f['id'] in analysis_result])} examinations")
+
+    def _get_pending_findings(self) -> List[Dict[str, Any]]:
+        """Get all pending findings from database."""
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT id, agent_name, finding_text, source_url, source_name,
+                   importance_score, category, status, created_at
+            FROM research_findings
+            WHERE status = 'pending_examination'
+            ORDER BY importance_score DESC, created_at DESC
+            LIMIT 20
+        ''')
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [dict(row) for row in rows]
