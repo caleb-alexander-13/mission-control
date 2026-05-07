@@ -77,14 +77,14 @@ class ExaminationAgent(BaseAgent):
                 if result.get("trade_action"):
                     trade_action_json = json.dumps(result.get("trade_action"))
 
-                # Auto-approve high-confidence trades (confidence >= 7)
+                # Aggressive mode: auto-execute trades at confidence >= 5
                 needs_approval = result.get("needs_approval", False)
                 if result.get("trade_action"):
                     confidence = result["trade_action"].get("confidence", 0)
-                    # Auto-execute high-confidence trades, require approval for lower confidence
-                    if confidence >= 7:
+                    # Auto-execute medium+ confidence trades, require approval only for low confidence (<5)
+                    if confidence >= 5:
                         needs_approval = False
-                    elif confidence < 5:
+                    else:
                         needs_approval = True
 
                 cursor.execute('''

@@ -29,8 +29,13 @@ class TechAgent(BaseAgent):
         while self.running:
             try:
                 findings = self._fetch_findings()
+                # Deduplicate findings within batch
+                seen_texts = set()
                 for finding in findings:
-                    self._process_finding(finding)
+                    text_lower = finding["text"].lower().strip()
+                    if text_lower not in seen_texts:
+                        seen_texts.add(text_lower)
+                        self._process_finding(finding)
             except Exception as e:
                 logger.error(f"Error in tech agent: {e}", exc_info=True)
 
@@ -86,11 +91,16 @@ class TechAgent(BaseAgent):
         return findings
 
     def _fetch_newsapi_tech(self) -> List[Dict[str, Any]]:
-        """Fetch tech news from NewsAPI."""
-        url = "https://newsapi.org/v2/top-headlines"
+        """Fetch tech news from NewsAPI (past 3 days only)."""
+        from datetime import datetime, timedelta
+        three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
+
+        url = "https://newsapi.org/v2/everything"
         params = {
-            "category": "technology",
+            "q": "technology AI startup software cloud",
             "language": "en",
+            "from": three_days_ago,
+            "sortBy": "publishedAt",
             "apiKey": self.newsapi_key
         }
 

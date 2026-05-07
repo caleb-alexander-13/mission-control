@@ -28,8 +28,13 @@ class CreativeAgent(BaseAgent):
         while self.running:
             try:
                 findings = self._fetch_findings()
+                # Deduplicate findings within batch
+                seen_texts = set()
                 for finding in findings:
-                    self._process_finding(finding)
+                    text_lower = finding["text"].lower().strip()
+                    if text_lower not in seen_texts:
+                        seen_texts.add(text_lower)
+                        self._process_finding(finding)
             except Exception as e:
                 logger.error(f"Error in creative agent: {e}", exc_info=True)
 
@@ -233,15 +238,18 @@ class CreativeAgent(BaseAgent):
         return findings
 
     def _fetch_wedding_industry_news(self) -> List[Dict[str, Any]]:
-        """Fetch wedding and event industry news and opportunities."""
+        """Fetch wedding and event industry news (past 3 days only)."""
+        from datetime import datetime, timedelta
         findings = []
         try:
             if self.newsapi_key:
+                three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
                 url = "https://newsapi.org/v2/everything"
                 params = {
                     "q": "wedding venue OR wedding event OR luxury wedding",
                     "sortBy": "publishedAt",
                     "language": "en",
+                    "from": three_days_ago,
                     "apiKey": self.newsapi_key
                 }
                 response = requests.get(url, params=params, timeout=10)
@@ -347,11 +355,16 @@ class CreativeAgent(BaseAgent):
         return findings
 
     def _fetch_newsapi_entertainment(self) -> List[Dict[str, Any]]:
-        """Fetch entertainment news from NewsAPI."""
-        url = "https://newsapi.org/v2/top-headlines"
+        """Fetch entertainment news from NewsAPI (past 3 days only)."""
+        from datetime import datetime, timedelta
+        three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
+
+        url = "https://newsapi.org/v2/everything"
         params = {
-            "category": "entertainment",
+            "q": "entertainment culture design fashion art",
             "language": "en",
+            "from": three_days_ago,
+            "sortBy": "publishedAt",
             "apiKey": self.newsapi_key
         }
 

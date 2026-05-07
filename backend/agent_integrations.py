@@ -188,6 +188,11 @@ For each finding, create an object with:
 - "needs_approval": true ONLY if this needs human judgment; false if routine/informational
 - "trade_action" (ONLY for finance findings with category "trade_signal:*"): {{"ticker": "AAPL", "direction": "buy" or "sell", "confidence": 1-10}}
   - Bullish/positive news = buy. Bearish/risk/downgrade news = sell. Omit for non-finance findings.
+  - Consider portfolio fit: Favor positions that improve ESG/impact alignment (score 6+) and reduce concentration risk
+  - Avoid over-weighting volatile positions; prefer diversification across impact/risk spectrum
+- "trade_reason" (ONLY for finance findings with trade_action): Clear explanation of why to buy/sell, in format: "[News Summary]: [Why it matters for the stock] → [Expected outcome]"
+  - Example: "Apple beats earnings forecast and raises guidance: Strong product demand signals continued growth → Q1 momentum likely to continue"
+  - Make this concrete, specific to the ticker and news, not generic
 
 APPROVAL RULES (be strict - auto-execute when possible):
 needs_approval=TRUE only for:
@@ -212,7 +217,7 @@ Findings JSON:
 {findings_json}
 
 Output format (replace finding_id with the actual ID):
-{{"finding_id": {{"analysis": "...", "gameplan": "...", "priority": "...", "needs_approval": ...}}, "finding_id": {{"analysis": "...", "gameplan": "...", "priority": "...", "needs_approval": ..., "trade_action": {{"ticker": "...", "direction": "...", "confidence": ...}}}}}}"""
+{{"finding_id": {{"analysis": "...", "gameplan": "...", "priority": "...", "needs_approval": ...}}, "finding_id": {{"analysis": "...", "gameplan": "...", "priority": "...", "needs_approval": ..., "trade_action": {{"ticker": "...", "direction": "...", "confidence": ...}}, "trade_reason": "..."}}}}"""
 
         response = client.messages.create(
             model="claude-opus-4-7",

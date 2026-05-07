@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from db_init import init_db
-from routes import agent, activity, cost, tasks, crons, agent_pipeline, portfolio
+from routes import agent, activity, cost, tasks, crons, agent_pipeline, portfolio, cavalli_voting
 from agents_runner import init_agents_runner
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(crons.router, prefix="/api")
 app.include_router(agent_pipeline.router, prefix="/api")
 app.include_router(portfolio.router, prefix="/api")
+app.include_router(cavalli_voting.router, prefix="/api")
 
 
 @app.on_event("startup")

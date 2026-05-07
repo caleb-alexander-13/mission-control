@@ -219,6 +219,25 @@ def init_db():
     ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_finding_feedback ON finding_feedback(finding_id)')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS sports_article_drafts (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            title               TEXT NOT NULL,
+            content             TEXT NOT NULL,
+            topic               TEXT,
+            inspiration_sources TEXT,
+            style_analysis      TEXT,
+            status              TEXT DEFAULT 'draft',
+            feedback            TEXT,
+            gmseat_url          TEXT,
+            created_at          INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+            reviewed_at         INTEGER,
+            published_at        INTEGER
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_sports_drafts_status ON sports_article_drafts(status)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_sports_drafts_created ON sports_article_drafts(created_at DESC)')
+
     conn.commit()
     conn.close()
 

@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cavalli 2026 Investment Prioritizer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      background: linear-gradient(135deg, #60a5fa, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 1.1em;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      margin-bottom: 40px;
+    }
+
+    .card {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      padding: 25px;
+      backdrop-filter: blur(10px);
+    }
+
+    .card h2 {
+      font-size: 1.3em;
+      margin-bottom: 20px;
+      color: #60a5fa;
+    }
+
+    .weights-section {
+      margin-bottom: 30px;
+    }
+
+    .weight-item {
+      margin-bottom: 25px;
+    }
+
+    .weight-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.95em;
+    }
+
+    .weight-label span {
+      font-weight: 500;
+    }
+
+    .weight-value {
+      color: #34d399;
+      font-weight: 600;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(148, 163, 184, 0.3);
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #60a5fa;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #34d399;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #60a5fa;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s;
+    }
+
+    input[type="range"]::-moz-range-thumb:hover {
+      background: #34d399;
+    }
+
+    .projects-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .project-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      background: rgba(51, 65, 85, 0.5);
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+
+    .project-item:hover {
+      background: rgba(51, 65, 85, 0.8);
+    }
+
+    .project-item input[type="checkbox"] {
+      margin-top: 3px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: #60a5fa;
+    }
+
+    .project-info {
+      flex: 1;
+    }
+
+    .project-name {
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 2px;
+    }
+
+    .project-meta {
+      font-size: 0.85em;
+      color: #94a3b8;
+    }
+
+    .footer-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 25px;
+      padding-top: 25px;
+      border-top: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-label {
+      font-size: 0.85em;
+      color: #94a3b8;
+      margin-bottom: 5px;
+    }
+
+    .stat-value {
+      font-size: 1.5em;
+      font-weight: 700;
+      color: #34d399;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-top: 25px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-submit {
+      background: linear-gradient(135deg, #60a5fa, #34d399);
+      color: #0f172a;
+    }
+
+    .btn-submit:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(96, 165, 250, 0.3);
+    }
+
+    .btn-results {
+      background: rgba(107, 114, 128, 0.5);
+      color: #e2e8f0;
+      border: 1px solid rgba(107, 114, 128, 0.5);
+    }
+
+    .btn-results:hover {
+      background: rgba(107, 114, 128, 0.7);
+    }
+
+    .message {
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .message.success {
+      display: block;
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(16, 185, 129, 0.5);
+      color: #34d399;
+    }
+
+    .message.error {
+      display: block;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #f87171;
+    }
+
+    .voter-name-input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      background: rgba(51, 65, 85, 0.5);
+      color: #e2e8f0;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 1em;
+    }
+
+    .voter-name-input::placeholder {
+      color: #94a3b8;
+    }
+
+    .voter-name-input:focus {
+      outline: none;
+      border-color: #60a5fa;
+      background: rgba(51, 65, 85, 0.8);
+    }
+
+    .section-divider {
+      margin: 30px 0;
+      border: none;
+      border-top: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    @media (max-width: 768px) {
+      .content {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 1.8em;
+      }
+
+      .card {
+        padding: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🐴 Cavalli 2026 Investment Prioritizer</h1>
+      <p class="subtitle">Adjust weights, select projects, submit your priorities</p>
+    </header>
+
+    <div id="message" class="message"></div>
+
+    <div class="content">
+      <!-- Left: Weights & Voter Name -->
+      <div class="card">
+        <h2>Your Priorities</h2>
+
+        <input type="text" id="voterName" class="voter-name-input" placeholder="Your name (Caleb, Haylee, Jackie...)" />
+
+        <div class="weights-section">
+          <div class="weight-item">
+            <div class="weight-label">
+              <span>💰 ROI / Revenue Potential</span>
+              <span class="weight-value" id="roiValue">25%</span>
+            </div>
+            <input type="range" id="roiSlider" min="0" max="100" value="25" />
+          </div>
+
+          <div class="weight-item">
+            <div class="weight-label">
+              <span>🎨 Brand / Aesthetic Alignment</span>
+              <span class="weight-value" id="brandValue">25%</span>
+            </div>
+            <input type="range" id="brandSlider" min="0" max="100" value="25" />
+          </div>
+
+          <div class="weight-item">
+            <div class="weight-label">
+              <span>⚡ Speed / Quick Wins</span>
+              <span class="weight-value" id="speedValue">25%</span>
+            </div>
+            <input type="range" id="speedSlider" min="0" max="100" value="25" />
+          </div>
+
+          <div class="weight-item">
+            <div class="weight-label">
+              <span>💵 Budget Consciousness</span>
+              <span class="weight-value" id="costValue">25%</span>
+            </div>
+            <input type="range" id="costSlider" min="0" max="100" value="25" />
+          </div>
+        </div>
+
+        <hr class="section-divider" />
+
+        <div class="controls">
+          <button class="btn-submit" id="submitBtn">Submit My Vote</button>
+          <button class="btn-results" id="resultsBtn">View Results</button>
+        </div>
+      </div>
+
+      <!-- Right: Project Selection -->
+      <div class="card">
+        <h2>Select Projects</h2>
+        <div class="projects-list" id="projectsList"></div>
+
+        <div class="footer-stats">
+          <div class="stat">
+            <div class="stat-label">Total Cost</div>
+            <div class="stat-value" id="totalCost">$0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Projects Selected</div>
+            <div class="stat-value" id="selectedCount">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:8000/api';
+    let projects = [];
+    let selectedProjects = new Set();
+
+    // Initialize
+    async function init() {
+      try {
+        const res = await fetch(`${API_BASE}/cavalli/projects`);
+        const data = await res.json();
+        projects = data.projects || [];
+        renderProjects();
+        setupWeightListeners();
+      } catch (err) {
+        showMessage('Failed to load projects: ' + err.message, 'error');
+      }
+    }
+
+    function renderProjects() {
+      const list = document.getElementById('projectsList');
+      list.innerHTML = projects.map(p => `
+        <div class="project-item">
+          <input type="checkbox" class="project-checkbox" value="${p.id}"
+            ${selectedProjects.has(p.id) ? 'checked' : ''} />
+          <div class="project-info">
+            <div class="project-name">${p.name}</div>
+            <div class="project-meta">$${p.cost.toLocaleString()}</div>
+          </div>
+        </div>
+      `).join('');
+
+      document.querySelectorAll('.project-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const id = parseInt(e.target.value);
+          if (e.target.checked) {
+            selectedProjects.add(id);
+          } else {
+            selectedProjects.delete(id);
+          }
+          updateStats();
+        });
+      });
+    }
+
+    function setupWeightListeners() {
+      ['roi', 'brand', 'speed', 'cost'].forEach(type => {
+        document.getElementById(type + 'Slider').addEventListener('input', (e) => {
+          const val = parseInt(e.target.value);
+          document.getElementById(type + 'Value').textContent = val + '%';
+          normalizeWeights();
+        });
+      });
+    }
+
+    function normalizeWeights() {
+      const roi = parseInt(document.getElementById('roiSlider').value);
+      const brand = parseInt(document.getElementById('brandSlider').value);
+      const speed = parseInt(document.getElementById('speedSlider').value);
+      const cost = parseInt(document.getElementById('costSlider').value);
+
+      const total = roi + brand + speed + cost;
+      const scale = total > 0 ? 100 / total : 1;
+
+      const roiN = Math.round(roi * scale);
+      const brandN = Math.round(brand * scale);
+      const speedN = Math.round(speed * scale);
+      const costN = 100 - roiN - brandN - speedN;
+
+      document.getElementById('roiValue').textContent = roiN + '%';
+      document.getElementById('brandValue').textContent = brandN + '%';
+      document.getElementById('speedValue').textContent = speedN + '%';
+      document.getElementById('costValue').textContent = costN + '%';
+    }
+
+    function updateStats() {
+      const selectedIds = Array.from(selectedProjects);
+      const total = projects
+        .filter(p => selectedIds.includes(p.id))
+        .reduce((sum, p) => sum + p.cost, 0);
+
+      document.getElementById('totalCost').textContent = '$' + total.toLocaleString();
+      document.getElementById('selectedCount').textContent = selectedIds.length;
+    }
+
+    async function submitVote() {
+      const voterName = document.getElementById('voterName').value.trim();
+      if (!voterName) {
+        showMessage('Please enter your name', 'error');
+        return;
+      }
+
+      if (selectedProjects.size === 0) {
+        showMessage('Please select at least one project', 'error');
+        return;
+      }
+
+      const roi = parseInt(document.getElementById('roiValue').textContent);
+      const brand = parseInt(document.getElementById('brandValue').textContent);
+      const speed = parseInt(document.getElementById('speedValue').textContent);
+      const cost = parseInt(document.getElementById('costValue').textContent);
+
+      try {
+        const res = await fetch(`${API_BASE}/cavalli/vote?voter_name=${encodeURIComponent(voterName)}&weights=${JSON.stringify({roi: roi/100, brand: brand/100, speed: speed/100, cost: cost/100})}&selections=${JSON.stringify(Array.from(selectedProjects))}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        const data = await res.json();
+        if (data.status === 'success') {
+          showMessage(`✓ ${voterName}'s vote saved! (${data.projects_selected} projects selected)`, 'success');
+        } else {
+          showMessage('Error: ' + data.message, 'error');
+        }
+      } catch (err) {
+        showMessage('Failed to submit vote: ' + err.message, 'error');
+      }
+    }
+
+    function showMessage(text, type) {
+      const msg = document.getElementById('message');
+      msg.textContent = text;
+      msg.className = 'message ' + type;
+      setTimeout(() => {
+        msg.className = 'message';
+      }, 4000);
+    }
+
+    document.getElementById('submitBtn').addEventListener('click', submitVote);
+    document.getElementById('resultsBtn').addEventListener('click', () => {
+      window.location.href = 'cavalli-results.html';
+    });
+
+    init();
+  </script>
+</body>
+</html>

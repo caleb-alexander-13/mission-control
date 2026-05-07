@@ -86,14 +86,19 @@ class FinanceAgent(BaseAgent):
         return findings
 
     def _fetch_newsapi_business(self) -> List[Dict[str, Any]]:
-        """Fetch business news from NewsAPI."""
+        """Fetch business news from NewsAPI (past 3 days only)."""
         if not self.newsapi_key:
             return []
 
-        url = "https://newsapi.org/v2/top-headlines"
+        from datetime import datetime, timedelta
+        three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
+
+        url = "https://newsapi.org/v2/everything"
         params = {
-            "category": "business",
+            "q": "stocks OR finance OR earnings OR market",
             "language": "en",
+            "from": three_days_ago,
+            "sortBy": "publishedAt",
             "apiKey": self.newsapi_key
         }
 
@@ -115,19 +120,29 @@ class FinanceAgent(BaseAgent):
         return findings
 
     def _fetch_marketwatch_rss(self) -> List[Dict[str, Any]]:
-        """Fetch financial news from MarketWatch RSS."""
+        """Fetch financial news from MarketWatch RSS (past 3 days only)."""
+        from datetime import datetime, timedelta
+        import email.utils
+
         url = "https://feeds.marketwatch.com/marketwatch/topstories/"
         feed = feedparser.parse(url)
+        three_days_ago = datetime.utcnow() - timedelta(days=3)
 
         findings = []
-        for entry in feed.entries[:5]:
+        for entry in feed.entries:
+            published = entry.get("published_parsed")
+            if published:
+                pub_time = datetime(*published[:6])
+                if pub_time < three_days_ago:
+                    continue
+
             findings.append({
                 "text": entry.get("title", ""),
                 "source_url": entry.get("link"),
                 "source_name": "MarketWatch"
             })
 
-        logger.info(f"Fetched {len(findings)} articles from MarketWatch RSS")
+        logger.info(f"Fetched {len(findings)} recent articles from MarketWatch RSS")
         return findings
 
     def _extract_ticker(self, text: str) -> str | None:
@@ -317,12 +332,24 @@ class FinanceAgent(BaseAgent):
             return
 
         try:
+            # Deduplicate findings (remove exact duplicates within batch)
+            seen_texts = set()
+            unique_findings = []
+            for f in findings:
+                text_lower = f["text"].lower().strip()
+                if text_lower not in seen_texts:
+                    seen_texts.add(text_lower)
+                    unique_findings.append(f)
+
+            if len(unique_findings) < len(findings):
+                logger.info(f"Deduplicated {len(findings) - len(unique_findings)} duplicate findings")
+
             # Score all findings in a single batch call
-            batch_to_score = [{"text": f["text"]} for f in findings]
+            batch_to_score = [{"text": f["text"]} for f in unique_findings]
             scores = batch_score_findings_with_claude(batch_to_score, "finance")
 
             # Process each finding with its score
-            for finding in findings:
+            for finding in unique_findings:
                 score = scores.get(finding["text"], 5)
                 category = self._categorize(finding["text"])
                 ticker = self._extract_ticker(finding["text"])

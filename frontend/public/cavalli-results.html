@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cavalli Voting Results</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+
+    h1 {
+      font-size: 2.2em;
+      background: linear-gradient(135deg, #60a5fa, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      background: rgba(107, 114, 128, 0.5);
+      color: #e2e8f0;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      background: rgba(107, 114, 128, 0.7);
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      margin-bottom: 40px;
+    }
+
+    .card {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      padding: 25px;
+      backdrop-filter: blur(10px);
+    }
+
+    .card h2 {
+      font-size: 1.3em;
+      margin-bottom: 20px;
+      color: #60a5fa;
+    }
+
+    .weight-bar {
+      margin-bottom: 20px;
+    }
+
+    .weight-name {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 0.95em;
+    }
+
+    .bar {
+      height: 8px;
+      background: rgba(148, 163, 184, 0.2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #60a5fa, #34d399);
+      transition: width 0.3s;
+    }
+
+    .rankings {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .ranking-item {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      padding: 15px;
+      background: rgba(51, 65, 85, 0.5);
+      border-radius: 8px;
+      border-left: 4px solid #60a5fa;
+    }
+
+    .ranking-rank {
+      font-size: 1.8em;
+      font-weight: 700;
+      color: #60a5fa;
+      min-width: 40px;
+      text-align: center;
+    }
+
+    .ranking-info {
+      flex: 1;
+    }
+
+    .ranking-name {
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 4px;
+    }
+
+    .ranking-meta {
+      font-size: 0.85em;
+      color: #94a3b8;
+    }
+
+    .ranking-score {
+      text-align: right;
+    }
+
+    .ranking-pct {
+      font-size: 1.2em;
+      font-weight: 700;
+      color: #34d399;
+    }
+
+    .ranking-votes {
+      font-size: 0.85em;
+      color: #94a3b8;
+    }
+
+    .voters-section {
+      margin-top: 30px;
+    }
+
+    .voter-box {
+      background: rgba(51, 65, 85, 0.5);
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+
+    .voter-name {
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .voter-weights {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.9em;
+    }
+
+    .weight-item {
+      padding: 8px;
+      background: rgba(30, 41, 59, 0.5);
+      border-radius: 4px;
+    }
+
+    .weight-label {
+      color: #94a3b8;
+      font-size: 0.85em;
+    }
+
+    .weight-val {
+      color: #60a5fa;
+      font-weight: 600;
+    }
+
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .project-selection {
+      font-size: 0.85em;
+      color: #e2e8f0;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .projects-selected {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .project-tag {
+      background: rgba(96, 165, 250, 0.2);
+      border: 1px solid rgba(96, 165, 250, 0.5);
+      color: #60a5fa;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 0.85em;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #94a3b8;
+    }
+
+    .error {
+      padding: 15px;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #f87171;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 1024px) {
+      .content {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 Voting Results</h1>
+      <button onclick="window.location.href='cavalli-voting.html'">← Back to Voting</button>
+    </header>
+
+    <div id="error" class="error" style="display: none;"></div>
+    <div id="loading" class="loading">Loading results...</div>
+    <div id="content" style="display: none;"></div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:8000/api';
+
+    async function loadResults() {
+      try {
+        const res = await fetch(`${API_BASE}/cavalli/results`);
+        const data = await res.json();
+
+        if (data.error) {
+          showError(data.error);
+          return;
+        }
+
+        renderResults(data);
+      } catch (err) {
+        showError('Failed to load results: ' + err.message);
+      }
+    }
+
+    function showError(msg) {
+      document.getElementById('loading').style.display = 'none';
+      const errorEl = document.getElementById('error');
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    }
+
+    function renderResults(data) {
+      const { voters, consensus_ranking, average_weights } = data;
+
+      if (!voters || voters.length === 0) {
+        showError('No votes yet. Start voting to see results!');
+        return;
+      }
+
+      let html = `
+        <div class="content">
+          <!-- Rankings -->
+          <div class="card">
+            <h2>🏆 Team Consensus Ranking</h2>
+            <div class="rankings">
+      `;
+
+      consensus_ranking.forEach((project, idx) => {
+        html += `
+          <div class="ranking-item">
+            <div class="ranking-rank">#${idx + 1}</div>
+            <div class="ranking-info">
+              <div class="ranking-name">${project.name}</div>
+              <div class="ranking-meta">$${project.cost.toLocaleString()} · Selected by ${project.votes} person${project.votes !== 1 ? 's' : ''}</div>
+            </div>
+            <div class="ranking-score">
+              <div class="ranking-pct">${project.vote_percentage}%</div>
+              <div class="ranking-votes">${project.avg_weighted_score.toFixed(0)} pts</div>
+            </div>
+          </div>
+        `;
+      });
+
+      html += `
+            </div>
+          </div>
+
+          <!-- Average Weights -->
+          <div class="card">
+            <h2>📊 Team Average Weights</h2>
+            <div class="weight-bar">
+              <div class="weight-name">
+                <span>💰 ROI</span>
+                <span>${(average_weights.roi * 100).toFixed(0)}%</span>
+              </div>
+              <div class="bar">
+                <div class="bar-fill" style="width: ${average_weights.roi * 100}%"></div>
+              </div>
+            </div>
+            <div class="weight-bar">
+              <div class="weight-name">
+                <span>🎨 Brand</span>
+                <span>${(average_weights.brand * 100).toFixed(0)}%</span>
+              </div>
+              <div class="bar">
+                <div class="bar-fill" style="width: ${average_weights.brand * 100}%"></div>
+              </div>
+            </div>
+            <div class="weight-bar">
+              <div class="weight-name">
+                <span>⚡ Speed</span>
+                <span>${(average_weights.speed * 100).toFixed(0)}%</span>
+              </div>
+              <div class="bar">
+                <div class="bar-fill" style="width: ${average_weights.speed * 100}%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Individual Voters -->
+        <div class="card">
+          <h2>👥 Individual Votes</h2>
+          <div class="voters-section">
+      `;
+
+      voters.forEach(voter => {
+        const roi = (voter.roi_weight * 100).toFixed(0);
+        const brand = (voter.brand_weight * 100).toFixed(0);
+        const speed = (voter.speed_weight * 100).toFixed(0);
+
+        html += `
+          <div class="voter-box">
+            <div class="voter-name">👤 ${voter.voter_name}</div>
+            <div class="voter-weights">
+              <div class="weight-item">
+                <div class="weight-label">ROI</div>
+                <div class="weight-val">${roi}%</div>
+              </div>
+              <div class="weight-item">
+                <div class="weight-label">Brand</div>
+                <div class="weight-val">${brand}%</div>
+              </div>
+              <div class="weight-item">
+                <div class="weight-label">Speed</div>
+                <div class="weight-val">${speed}%</div>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      html += `
+          </div>
+        </div>
+      `;
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').innerHTML = html;
+      document.getElementById('content').style.display = 'block';
+    }
+
+    loadResults();
+  </script>
+</body>
+</html>

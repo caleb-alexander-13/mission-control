@@ -55,13 +55,43 @@ class BaseAgent(ABC):
         category: Optional[str] = None
     ) -> int:
         """
-        Insert a research finding into the database.
+        Insert a research finding into the database (skip if duplicate).
 
         Returns:
-            ID of the inserted finding
+            ID of the inserted finding (or existing ID if duplicate)
         """
         conn = self._get_db_connection()
         cursor = conn.cursor()
+
+        # Check if exact finding already exists (same agent, same or very similar text)
+        cursor.execute('''
+            SELECT id FROM research_findings
+            WHERE agent_name = ? AND LOWER(finding_text) = LOWER(?)
+            LIMIT 1
+        ''', (self.agent_name, finding_text[:500]))
+
+        existing = cursor.fetchone()
+        if existing:
+            conn.close()
+            logger.debug(f"Skipping duplicate finding from {self.agent_name}: {finding_text[:50]}...")
+            return existing[0]
+
+        # Check if we've covered this topic recently (past 7 days) to avoid repetitive content
+        # Extract first 50 chars as topic signature
+        topic_sig = finding_text[:50].lower()
+        seven_days_ago = int(time.time() * 1000) - (7 * 24 * 60 * 60 * 1000)
+
+        cursor.execute('''
+            SELECT id FROM research_findings
+            WHERE agent_name = ? AND LOWER(finding_text) LIKE ? AND created_at > ?
+            ORDER BY created_at DESC LIMIT 1
+        ''', (self.agent_name, f"{topic_sig}%", seven_days_ago))
+
+        recent_topic = cursor.fetchone()
+        if recent_topic:
+            conn.close()
+            logger.debug(f"Skipping recent duplicate topic from {self.agent_name}: {finding_text[:50]}...")
+            return recent_topic[0]
 
         now = int(time.time() * 1000)
 

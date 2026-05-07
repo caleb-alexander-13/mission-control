@@ -314,8 +314,8 @@ async def get_status():
             "pending_examinations": pending_exams
         }
 
-        # Executioner agent status
-        cursor.execute("SELECT COUNT(*) FROM actions WHERE result='pending'")
+        # Executioner agent status (count pending examinations awaiting execution)
+        cursor.execute("SELECT COUNT(*) FROM examinations WHERE status='pending_action'")
         pending_actions = cursor.fetchone()[0]
         agent_status["executioner"] = {
             "status": "idle" if pending_actions == 0 else "executing",
@@ -707,3 +707,209 @@ Provide a detailed response to the user's follow-up question. Be specific and su
     except Exception as e:
         logger.error(f"Error asking agent about exam {exam_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =====================================================================
+# SPORTS ARTICLE DRAFT ENDPOINTS
+# =====================================================================
+
+@router.get("/agent-pipeline/article-drafts")
+async def get_article_drafts(status: str = "draft", limit: int = 10):
+    """Get article drafts for review."""
+    try:
+        from agents.research.content_generator import ContentGenerator
+
+        drafts = ContentGenerator.get_pending_drafts(limit)
+        return {
+            "drafts": drafts,
+            "count": len(drafts)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching drafts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/agent-pipeline/article-drafts/{draft_id}/approve")
+async def approve_article_draft(draft_id: int, feedback: str = ""):
+    """Approve an article draft for publication to GMSeat."""
+    try:
+        import sqlite3
+        from pathlib import Path
+        from agents.research.content_generator import ContentGenerator
+        from agents.research.gmseat_publisher import GMSeatPublisher
+
+        # Get draft details
+        db_path = Path.home() / 'Desktop' / 'mission-control' / 'backend' / 'mission_control.db'
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT title, content, topic, inspiration_sources FROM sports_article_drafts WHERE id = ?', (draft_id,))
+        draft = cursor.fetchone()
+        conn.close()
+
+        if not draft:
+            raise HTTPException(status_code=404, detail="Draft not found")
+
+        # Approve the draft
+        success = ContentGenerator.approve_draft(draft_id, feedback)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to approve draft")
+
+        # Parse inspiration sources
+        import json
+        inspiration_sources = []
+        try:
+            if draft['inspiration_sources']:
+                inspiration_sources = json.loads(draft['inspiration_sources'])
+        except:
+            inspiration_sources = []
+
+        # Publish to GMSeat
+        gmseat_result = GMSeatPublisher.publish_article(
+            draft['title'],
+            draft['content'],
+            draft['topic'],
+            draft_id,
+            inspiration_sources
+        )
+
+        if gmseat_result:
+            # Update draft with GMSeat URL
+            gmseat_url = gmseat_result.get('url', f"https://gmseat.com/articles/{gmseat_result.get('article_id')}")
+            GMSeatPublisher.update_draft_published(draft_id, gmseat_url)
+            GMSeatPublisher.send_notification(draft['title'], draft['content'])
+
+            return {
+                "status": "approved_and_published",
+                "draft_id": draft_id,
+                "gmseat_url": gmseat_url
+            }
+        else:
+            # Approved but GMSeat publish failed
+            return {
+                "status": "approved",
+                "draft_id": draft_id,
+                "warning": "Draft approved but GMSeat publishing failed"
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving draft {draft_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/agent-pipeline/article-drafts/{draft_id}/reject")
+async def reject_article_draft(draft_id: int, feedback: str = ""):
+    """Reject an article draft with feedback."""
+    try:
+        from agents.research.content_generator import ContentGenerator
+
+        success = ContentGenerator.reject_draft(draft_id, feedback)
+        if success:
+            return {"status": "rejected", "draft_id": draft_id}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to reject draft")
+    except Exception as e:
+        logger.error(f"Error rejecting draft {draft_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agent-pipeline/war-room-articles")
+async def get_war_room_articles(limit: int = Query(10, description="Number of articles to return")):
+    """Fetch published articles from NFL War Room for review."""
+    try:
+        war_room_db = Path.home() / 'Desktop' / 'NFL War Room' / 'backend' / 'draft.db'
+
+        if not war_room_db.exists():
+            return {"status": "success", "articles": [], "count": 0}
+
+        conn = sqlite3.connect(str(war_room_db), timeout=5)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT id, title, content, topic, created_at, published_at, status
+            FROM war_room_articles
+            WHERE status = 'published'
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+
+        articles = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+
+        return {
+            "status": "success",
+            "articles": articles,
+            "count": len(articles)
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching War Room articles: {e}")
+        # Return empty list on error - War Room might not be accessible
+        return {
+            "status": "success",
+            "articles": [],
+            "count": 0
+        }
+
+
+@router.get("/agent-pipeline/trades-with-findings")
+async def get_trades_with_findings(limit: int = Query(20, description="Number of trades to return")):
+    """Fetch trades with their associated findings for detailed context."""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                pt.id,
+                pt.ticker,
+                pt.action,
+                pt.shares,
+                pt.price,
+                pt.cash_impact,
+                pt.reason,
+                pt.created_at,
+                rf.finding_text,
+                rf.source_name,
+                rf.importance_score
+            FROM paper_trades pt
+            LEFT JOIN research_findings rf ON pt.finding_id = rf.id
+            ORDER BY pt.created_at DESC
+            LIMIT ?
+        """, (limit,))
+
+        trades = []
+        for row in cursor.fetchall():
+            trades.append({
+                "id": row[0],
+                "ticker": row[1],
+                "action": row[2],
+                "shares": row[3],
+                "price": row[4],
+                "cash_impact": row[5],
+                "reason": row[6],
+                "created_at": row[7],
+                "finding_text": row[8],
+                "source_name": row[9],
+                "importance_score": row[10]
+            })
+
+        conn.close()
+
+        return {
+            "status": "success",
+            "trades": trades,
+            "count": len(trades)
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching trades with findings: {e}")
+        return {
+            "status": "success",
+            "trades": [],
+            "count": 0
+        }

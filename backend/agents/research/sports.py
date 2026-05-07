@@ -9,6 +9,8 @@ from typing import List, Dict, Any
 
 from agents.base_agent import BaseAgent
 from agent_integrations import score_finding_with_claude
+from agents.research.content_generator import ContentGenerator
+from utils.notifications import send_notification
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +30,13 @@ class SportsAgent(BaseAgent):
         while self.running:
             try:
                 findings = self._fetch_findings()
+                # Deduplicate findings within batch
+                seen_texts = set()
                 for finding in findings:
-                    self._process_finding(finding)
+                    text_lower = finding["text"].lower().strip()
+                    if text_lower not in seen_texts:
+                        seen_texts.add(text_lower)
+                        self._process_finding(finding)
             except Exception as e:
                 logger.error(f"Error in sports agent: {e}", exc_info=True)
 
@@ -85,12 +92,16 @@ class SportsAgent(BaseAgent):
         return findings
 
     def _fetch_newsapi_sports(self) -> List[Dict[str, Any]]:
-        """Fetch sports news from NewsAPI."""
+        """Fetch sports news from NewsAPI (past 3 days only)."""
+        from datetime import datetime, timedelta
+        three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
+
         url = "https://newsapi.org/v2/everything"
         params = {
             "q": "NFL sports",
             "sortBy": "publishedAt",
             "language": "en",
+            "from": three_days_ago,
             "apiKey": self.newsapi_key
         }
 
@@ -112,19 +123,27 @@ class SportsAgent(BaseAgent):
         return findings
 
     def _fetch_espn_rss(self) -> List[Dict[str, Any]]:
-        """Fetch sports news from ESPN RSS feed."""
+        """Fetch sports news from ESPN RSS feed (past 3 days only)."""
+        from datetime import datetime, timedelta
         url = "https://www.espn.com/espn/rss/nfl/news"
         feed = feedparser.parse(url)
+        three_days_ago = datetime.utcnow() - timedelta(days=3)
 
         findings = []
-        for entry in feed.entries[:5]:
+        for entry in feed.entries:
+            published = entry.get("published_parsed")
+            if published:
+                pub_time = datetime(*published[:6])
+                if pub_time < three_days_ago:
+                    continue
+
             findings.append({
                 "text": entry.get("title", ""),
                 "source_url": entry.get("link"),
                 "source_name": "ESPN"
             })
 
-        logger.info(f"Fetched {len(findings)} articles from ESPN RSS")
+        logger.info(f"Fetched {len(findings)} recent articles from ESPN RSS")
         return findings
 
     def _fetch_nfl_injuries(self) -> List[Dict[str, Any]]:
@@ -350,3 +369,47 @@ class SportsAgent(BaseAgent):
         elif "rule" in text_lower:
             return "rule_change"
         return "news"
+
+    def generate_article_draft(self, finding_topic: str) -> None:
+        """Generate an original article based on ESPN style."""
+        try:
+            # Fetch top ESPN articles for style analysis
+            espn_articles = ContentGenerator.fetch_espn_articles(limit=5)
+            if not espn_articles:
+                logger.warning("No ESPN articles fetched for style analysis")
+                return
+
+            # Analyze their style
+            style_analysis = ContentGenerator.analyze_article_style(espn_articles[:3])
+
+            # Generate original article
+            article = ContentGenerator.generate_article(
+                finding_topic,
+                style_analysis,
+                espn_articles[:3]
+            )
+
+            if not article:
+                logger.warning(f"Failed to generate article for: {finding_topic}")
+                return
+
+            # Save draft
+            inspiration_sources = [a.get("link", "") for a in espn_articles[:3]]
+            draft_id = ContentGenerator.save_draft(
+                title=article.get("title", ""),
+                content=article.get("content", ""),
+                topic=finding_topic,
+                inspiration_sources=inspiration_sources,
+                style_analysis=style_analysis
+            )
+
+            if draft_id:
+                logger.info(f"Generated article draft {draft_id}: {article.get('title')}")
+                # Send notification
+                send_notification(
+                    f"New sports article draft ready for review:\n{article.get('title')}",
+                    title="📰 Article Draft Ready",
+                    tags="newspaper"
+                )
+        except Exception as e:
+            logger.error(f"Error generating article draft: {e}", exc_info=True)

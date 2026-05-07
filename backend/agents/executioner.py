@@ -38,6 +38,9 @@ class ExecutionerAgent(BaseAgent):
 
     def _execute_pending_actions(self) -> None:
         """Get pending examinations and execute or alert."""
+        # Clean up excess pending actions (keep top 10, max 20 total)
+        self._cleanup_pending_actions()
+
         examinations = self._get_pending_examinations()
 
         if not examinations:
@@ -77,9 +80,9 @@ class ExecutionerAgent(BaseAgent):
 
         # Fetch current price
         try:
-            from research.data_sources import YahooFinanceClient
-        except ImportError:
             from agents.research.data_sources import YahooFinanceClient
+        except ImportError:
+            from .research.data_sources import YahooFinanceClient
 
         price = YahooFinanceClient.get_stock_price(ticker)
         if not price:
@@ -95,8 +98,9 @@ class ExecutionerAgent(BaseAgent):
             row = cursor.fetchone()
             cash = row[0] if row else 0
 
-            # Calculate position size: 2% + (confidence/10 * 6%)
-            pct = 0.02 + (confidence / 10) * 0.06
+            # Calculate position size: aggressive mode 10-15% per trade
+            # 10% base + (confidence/10 * 5%) = 10.5% at confidence 1, 15% at confidence 10
+            pct = 0.10 + (confidence / 10) * 0.05
             spend = cash * pct
             shares = round(spend / price, 4)
 
@@ -136,11 +140,13 @@ class ExecutionerAgent(BaseAgent):
                                (sell_shares, int(time.time() * 1000), ticker))
                 cash_delta = proceeds
 
-            # Log the trade
+            # Log the trade with reason
+            # Use trade_reason if available (more specific), otherwise fall back to gameplan
+            trade_reason = exam.get("trade_reason") or exam.get("gameplan", "")
             cursor.execute('''INSERT INTO paper_trades (ticker, action, shares, price, cash_impact, reason, finding_id)
                               VALUES (?,?,?,?,?,?,?)''',
                            (ticker, direction, shares if direction == "buy" else sell_shares, price, cash_delta,
-                            exam.get("gameplan", "")[:200], exam.get("finding_id")))
+                            trade_reason[:200], exam.get("finding_id")))
 
             conn.commit()
             conn.close()
@@ -280,6 +286,47 @@ class ExecutionerAgent(BaseAgent):
                 "failed",
                 str(e)
             )
+
+    def _cleanup_pending_actions(self) -> None:
+        """Clean up excess pending actions - keep top 10, never exceed 20 total."""
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            cursor = conn.cursor()
+
+            # Get total count of pending actions
+            cursor.execute('SELECT COUNT(*) FROM examinations WHERE status = "pending_action"')
+            total_pending = cursor.fetchone()[0]
+
+            if total_pending <= 20:
+                conn.close()
+                return  # Within limit, no cleanup needed
+
+            logger.warning(f"Cleaning up pending actions: {total_pending} > 20 limit")
+
+            # Get the top 10 by priority (these will be kept)
+            cursor.execute('''
+                SELECT id FROM examinations
+                WHERE status = 'pending_action'
+                ORDER BY priority DESC, created_at ASC
+                LIMIT 10
+            ''')
+            top_10_ids = [row[0] for row in cursor.fetchall()]
+
+            # Delete all pending actions NOT in top 10
+            placeholders = ','.join('?' * len(top_10_ids))
+            cursor.execute(f'''
+                DELETE FROM examinations
+                WHERE status = 'pending_action' AND id NOT IN ({placeholders})
+            ''', top_10_ids)
+
+            deleted = cursor.rowcount
+            conn.commit()
+            conn.close()
+
+            logger.info(f"Cleaned up {deleted} low-priority pending actions, keeping top 10")
+
+        except Exception as e:
+            logger.error(f"Error cleaning up pending actions: {e}", exc_info=True)
 
     def _get_pending_examinations(self) -> List[Dict[str, Any]]:
         """Get all pending examinations."""

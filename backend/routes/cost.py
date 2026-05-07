@@ -46,6 +46,52 @@ def calculate_cost(tokens, token_type, model):
     price_per_mtok = model_pricing.get(token_type, 1.0)
     return (tokens / 1_000_000) * price_per_mtok
 
+
+def estimate_agent_costs(cursor, start_time=None):
+    """Estimate agent API costs from activity (findings, examinations, trades)."""
+    # Cost per activity (estimated based on Claude API calls)
+    FINDING_SCORE_COST = 0.002  # ~500 tokens for Claude scoring
+    EXAMINATION_COST = 0.008     # ~2000 tokens for detailed analysis
+    TRADE_COST = 0.001           # ~250 tokens for trade logging
+
+    costs = {
+        "findings": 0,
+        "examinations": 0,
+        "trades": 0,
+        "total": 0
+    }
+
+    try:
+        # Count findings
+        if start_time:
+            cursor.execute('SELECT COUNT(*) FROM research_findings WHERE created_at >= ?', (start_time,))
+        else:
+            cursor.execute('SELECT COUNT(*) FROM research_findings')
+        finding_count = cursor.fetchone()[0] or 0
+        costs["findings"] = round(finding_count * FINDING_SCORE_COST, 4)
+
+        # Count examinations
+        if start_time:
+            cursor.execute('SELECT COUNT(*) FROM examinations WHERE created_at >= ?', (start_time,))
+        else:
+            cursor.execute('SELECT COUNT(*) FROM examinations')
+        exam_count = cursor.fetchone()[0] or 0
+        costs["examinations"] = round(exam_count * EXAMINATION_COST, 4)
+
+        # Count trades
+        if start_time:
+            cursor.execute('SELECT COUNT(*) FROM paper_trades WHERE created_at >= ?', (start_time,))
+        else:
+            cursor.execute('SELECT COUNT(*) FROM paper_trades')
+        trade_count = cursor.fetchone()[0] or 0
+        costs["trades"] = round(trade_count * TRADE_COST, 4)
+
+        costs["total"] = round(costs["findings"] + costs["examinations"] + costs["trades"], 4)
+    except Exception as e:
+        logger.error(f"Error estimating agent costs: {e}")
+
+    return costs
+
 @router.get("/cost/summary")
 def cost_summary():
     """Get cost summary: today, this week, all-time, and per-session breakdown."""
@@ -143,13 +189,46 @@ def cost_summary():
                 "estimated_usd": round(usd, 4)
             })
 
+        # Agent costs (from background activity)
+        agent_today = estimate_agent_costs(cursor, today_start)
+        agent_week = estimate_agent_costs(cursor, week_start)
+        agent_alltime = estimate_agent_costs(cursor)
+
+        # Add total estimated USD combining IDE + agent costs
+        today["agent_costs"] = agent_today
+        today["total_estimated_usd"] = round(today["estimated_usd"] + agent_today["total"], 4)
+
+        week["agent_costs"] = agent_week
+        week["total_estimated_usd"] = round(week["estimated_usd"] + agent_week["total"], 4)
+
+        all_time["agent_costs"] = agent_alltime
+        all_time["total_estimated_usd"] = round(all_time["estimated_usd"] + agent_alltime["total"], 4)
+
+        # Last hour
+        hour_start = int((now - timedelta(hours=1)).timestamp() * 1000)
+        hour = calc_period(hour_start)
+        agent_hour = estimate_agent_costs(cursor, hour_start)
+        hour["agent_costs"] = agent_hour
+        hour["total_estimated_usd"] = round(hour["estimated_usd"] + agent_hour["total"], 4)
+
+        # Yesterday (full day)
+        yesterday_dt = now - timedelta(days=1)
+        yesterday_start = int(yesterday_dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+        yesterday = calc_period(yesterday_start)
+        agent_yesterday = estimate_agent_costs(cursor, yesterday_start)
+        yesterday["agent_costs"] = agent_yesterday
+        yesterday["total_estimated_usd"] = round(yesterday["estimated_usd"] + agent_yesterday["total"], 4)
+
         conn.close()
 
         return {
+            "last_hour": hour,
             "today": today,
+            "yesterday": yesterday,
             "this_week": week,
             "all_time": all_time,
-            "by_session": by_session
+            "by_session": by_session,
+            "budget": ALERT_BUDGET
         }
 
     except Exception as e:
