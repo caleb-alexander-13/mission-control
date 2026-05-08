@@ -1,19 +1,12 @@
 services:
   - type: web
-    name: mission-control-api
+    name: cavalli-voting
     env: python
     region: oregon
     plan: free
     runtime: python-3.12
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    startCommand: python3 wsgi.py
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.12"
-      - key: PYTHONUNBUFFERED
-        value: "true"
-databases:
-  - name: mission-control-db
-    databaseName: mission_control
-    plan: free
-    region: oregon
+      - key: ANTHROPIC_API_KEY
+        value: YOUR_NEW_API_KEY_HERE
